@@ -1,0 +1,12 @@
+{
+  "name": "Text Review Studio",
+  "short_name": "Text Review",
+  "description": "ブラウザ内で完結するテキスト差分・表記統一・HTML整形ツール",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f9fd",
+  "theme_color": "#101d34",
+  "icons": [
+    { "src": "assets/app-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
