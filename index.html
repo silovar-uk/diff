@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/app-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
-  <title>Text Review Studio — v0.6.2</title>
+  <title>Text Review Studio — v0.6.3</title>
 </head>
 <body>
   <div class="app-shell">
@@ -168,6 +168,20 @@
         </div>
       </section>
 
+      <section class="workspace-guidance" id="workspaceGuidance" aria-live="polite" hidden>
+        <div id="compareStartHint" class="compare-start-hint" hidden>
+          <span class="guidance-symbol" aria-hidden="true">↔</span>
+          <div><strong>差分の準備</strong><span>両方を入力すると、ここで差分を確認できます</span></div>
+        </div>
+        <div id="diffLegend" class="diff-legend" hidden>
+          <button class="diff-legend-close" data-action="close-diff-legend" aria-label="差分の見方を閉じる">×</button>
+          <strong>差分の見方</strong>
+          <p><i class="legend-before">赤い文字</i>：変更前にだけある表現</p>
+          <p><i class="legend-after">緑マーカー</i>：修正後に加わった表現</p>
+          <p><b>↔</b>：置換　<b>＋</b>：追加　<b>−</b>：削除</p>
+        </div>
+      </section>
+
       <section class="review-desk" id="reviewDesk">
         <section class="split-workspace" aria-label="左右比較ワークスペース">
           <article class="document-pane before-pane">
@@ -196,14 +210,6 @@
 
           <section class="diff-gutter" aria-label="差分ガター">
             <div class="gutter-head"><button class="diff-legend-toggle" data-action="toggle-diff-legend" aria-controls="diffLegend" aria-expanded="false" title="差分の見方">?</button></div>
-            <div id="diffLegend" class="diff-legend" hidden>
-              <button class="diff-legend-close" data-action="close-diff-legend" aria-label="差分の見方を閉じる">×</button>
-              <strong>差分の見方</strong>
-              <p><i class="legend-before">赤い文字</i>：変更前にだけある表現</p>
-              <p><i class="legend-after">緑マーカー</i>：修正後に加わった表現</p>
-              <p><b>↔</b>：置換　<b>＋</b>：追加　<b>−</b>：削除</p>
-            </div>
-            <div id="compareStartHint" class="compare-start-hint" hidden>両方を入力すると、ここで差分を確認できます</div>
             <div id="gutterMap" class="gutter-map"></div>
           </section>
 
@@ -242,7 +248,16 @@
                 <button class="mini-button strong" data-action="replace-all">すべて置換</button>
               </div>
             </div>
-            <div class="pane-body working-body">
+            <div class="after-content">
+              <div id="selectionToolbar" class="selection-toolbar" hidden aria-label="選択範囲へのタグ付け">
+                <span class="selection-toolbar-label">選択中の文字に付ける</span>
+                <button data-action="wrap-selection" data-tag="label">ラベル</button>
+                <button data-action="wrap-selection" data-tag="heading">中見出し</button>
+                <button data-action="wrap-selection" data-tag="note">注意</button>
+                <button data-action="wrap-selection" data-tag="strong">強調</button>
+                <button data-action="wrap-selection" data-tag="link">リンク</button>
+              </div>
+              <div class="pane-body working-body">
               <textarea id="workingText" class="editor working-editor" spellcheck="false" placeholder="修正後の原稿を貼り付け。ここがCMS作業版として育ちます。"></textarea>
               <div id="workingEmptyState" class="pane-empty-state pane-empty-state--after" hidden>
                 <span class="empty-step">2</span>
@@ -250,13 +265,7 @@
                 <p id="workingEmptyText">比較する修正後の文章を、ここに貼り付けます。</p>
                 <div><button class="secondary-button" data-action="paste-working">貼り付け</button><button class="quiet-button" data-action="focus-working">ここに入力</button></div>
               </div>
-              <div id="afterCompare" class="compare-surface" hidden></div>
-              <div id="selectionToolbar" class="selection-toolbar" hidden>
-                <button data-action="wrap-selection" data-tag="label">ラベル</button>
-                <button data-action="wrap-selection" data-tag="heading">中見出し</button>
-                <button data-action="wrap-selection" data-tag="note">注意</button>
-                <button data-action="wrap-selection" data-tag="strong">強調</button>
-                <button data-action="wrap-selection" data-tag="link">リンク</button>
+                <div id="afterCompare" class="compare-surface" hidden></div>
               </div>
             </div>
             <footer class="pane-footer"><span id="workingStats">0文字・0行</span><span id="workingMeta">URL 0件・HTMLタグ 0件</span></footer>
@@ -270,7 +279,7 @@
             <span id="railSub" class="rail-sub">入力待ち</span>
           </button>
           <div class="rail-dots" id="railDots"></div>
-          <div id="reviewRailHint" class="rail-hint" hidden>ここに確認が必要な項目が集まります<button data-action="close-rail-hint" aria-label="閉じる">×</button></div>
+          <div id="reviewRailHint" class="rail-hint" hidden>確認する項目はこちら<button data-action="close-rail-hint" aria-label="閉じる">×</button></div>
 
           <section class="review-panel" id="reviewPanel" hidden>
             <header class="review-panel-head">

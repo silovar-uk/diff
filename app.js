@@ -9,9 +9,9 @@
 
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
-  const VERSION = 'v0.6.2';
-  const AUTO_SAVE_KEY = 'text-review-studio-v0.6.2';
-  const LEGACY_SAVE_KEYS = ['text-review-studio-v0.6.1', 'text-review-studio-v0.6.0'];
+  const VERSION = 'v0.6.3';
+  const AUTO_SAVE_KEY = 'text-review-studio-v0.6.3';
+  const LEGACY_SAVE_KEYS = ['text-review-studio-v0.6.2', 'text-review-studio-v0.6.1', 'text-review-studio-v0.6.0'];
 
   const STYLE_RULES = [
     { id: 'fw-space', label: '全角スペースを半角スペースに統一', category: '空白', pattern: /　/g, replacement: ' ', severity: 'minor' },
@@ -760,6 +760,7 @@
       $('#workingText').hidden = false;
       $('#diffLegend').hidden = true;
       $('.diff-legend-toggle').setAttribute('aria-expanded', 'false');
+      syncWorkspaceGuidance();
       gutter.innerHTML = '<span class="gutter-marker same" aria-label="比較を開始すると差分を表示します">↔</span>';
       return;
     }
@@ -826,6 +827,13 @@
     if (noBaseline && noWorking) sidebarText.textContent = '変更前と修正後を左右に貼り付けます。';
     else if (state.baseline && noWorking) sidebarText.textContent = '次に、右側へ修正後の原稿を貼ると差分を確認できます。';
     else if (noBaseline && state.working) sidebarText.textContent = 'CMS作業は始められます。比較する場合は左に変更前を貼ります。';
+    syncWorkspaceGuidance();
+  }
+
+  function syncWorkspaceGuidance() {
+    const guide = $('#workspaceGuidance');
+    if (!guide) return;
+    guide.hidden = $('#compareStartHint').hidden && $('#diffLegend').hidden;
   }
 
   function renderDiffLegend() {
@@ -835,6 +843,7 @@
     const shouldShow = canCompare && !state.ui.legendDismissed;
     legend.hidden = !shouldShow;
     button.setAttribute('aria-expanded', String(shouldShow));
+    syncWorkspaceGuidance();
   }
 
   function renderStats() {
@@ -1100,12 +1109,14 @@
     const open = legend.hidden;
     legend.hidden = !open;
     button.setAttribute('aria-expanded', String(open));
+    syncWorkspaceGuidance();
     if (!open) { state.ui.legendDismissed = true; persist(); }
   }
 
   function closeDiffLegend() {
     $('#diffLegend').hidden = true;
     $('.diff-legend-toggle').setAttribute('aria-expanded', 'false');
+    syncWorkspaceGuidance();
     state.ui.legendDismissed = true;
     persist();
   }
@@ -1435,9 +1446,7 @@
     const end = editor.selectionEnd;
     if (start === end) { hideSelectionToolbar(); return; }
     const toolbar = $('#selectionToolbar');
-    const rect = editor.getBoundingClientRect();
-    toolbar.style.left = `${Math.min(rect.width - 265, 22)}px`;
-    toolbar.style.top = `${Math.max(8, editor.scrollTop + 8)}px`;
+    // Kept in normal flow so contextual controls never hide the selected paragraph.
     toolbar.hidden = false;
   }
 

@@ -89,6 +89,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .editor { display: block; width: 100%; height: 100%; min-height: 560px; resize: vertical; padding: 18px 20px 44px; border: 0; outline: 0; color: #293756; font-family: var(--sans); font-size: 15px; line-height: 1.92; background: transparent; }
 .editor::placeholder { color: #a7b0c1; }
 .working-editor { background: linear-gradient(90deg, rgba(234,240,255,.28), transparent 16%); }
+.after-content { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.after-content .pane-body { min-height: 0; }
 .pane-footer { display: flex; justify-content: space-between; gap: 8px; padding: 10px 17px; border-top: 1px solid #e7eaf1; color: var(--ink-faint); font-size: 11px; background: #fcfdff; }
 
 .diff-gutter { position: relative; display: grid; grid-template-rows: auto 1fr; min-width: 46px; border-left: 1px solid #e7eaf1; border-right: 1px solid #e7eaf1; background: #f9fafc; }
@@ -128,8 +130,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .replace-controls input[type="text"], .replace-controls > input { flex: 1 1 140px; padding: 7px 9px; border: 1px solid #ccd5e6; border-radius: 7px; }
 .replace-controls label { display: inline-flex; gap: 4px; align-items: center; color: var(--ink-soft); font-size: 11px; }
 
-.selection-toolbar { position: absolute; z-index: 20; display: flex; gap: 3px; padding: 5px; border: 1px solid #cfd7e7; border-radius: 10px; background: #fff; box-shadow: 0 10px 26px rgba(17,29,53,.18); }
-.selection-toolbar button { padding: 6px 8px; border: 0; border-radius: 6px; color: #405170; font-size: 11px; font-weight: 700; background: #f7f9fd; }
+/* Context tools live in document flow so they never cover the selected text. */
+.selection-toolbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 8px 14px -2px; padding: 7px; border: 1px solid #d5deec; border-radius: 10px; background: #f8faff; }
+.selection-toolbar-label { margin-right: 2px; color: #71809a; font-size: 10px; font-weight: 850; }
+.selection-toolbar button { padding: 6px 8px; border: 0; border-radius: 6px; color: #405170; font-size: 11px; font-weight: 700; background: #fff; }
 .selection-toolbar button:hover { color: #fff; background: var(--blue); }
 
 .review-rail { position: relative; min-width: 54px; border-left: 1px solid var(--line); background: linear-gradient(180deg, #fcfdff, #f6f8fc); }
@@ -474,21 +478,27 @@ kbd { padding: 1px 4px; border: 1px solid #d8dfeb; border-bottom-width: 2px; bor
 .pane-empty-state > div { display: flex; flex-wrap: wrap; gap: 6px; pointer-events: auto; }
 .pane-empty-state > .empty-step, .pane-empty-state > strong, .pane-empty-state > p { pointer-events: none; }
 
+/* Guidance sits in normal flow above the papers; no helper text may overlay an editor. */
+.workspace-guidance { display: flex; gap: 8px; align-items: stretch; min-width: 0; margin: 10px 0; }
+.workspace-guidance[hidden] { display: none; }
+.compare-start-hint { display: flex; flex: 1 1 340px; gap: 9px; align-items: center; min-height: 42px; padding: 9px 12px; border: 1px solid #d8e2f2; border-radius: 10px; color: #5f6f8a; font-size: 12px; line-height: 1.45; background: #f8faff; }
+.compare-start-hint > div { display: grid; gap: 1px; }
+.compare-start-hint strong { color: #3f5579; font-size: 11px; }
+.guidance-symbol { display: inline-grid; flex: 0 0 25px; width: 25px; height: 25px; place-items: center; border-radius: 999px; color: #fff; font-size: 13px; font-weight: 900; background: #5d78ad; }
+.compare-start-hint[hidden] { display: none; }
 .diff-gutter { overflow: visible; }
 .gutter-head { position: relative; writing-mode: initial; }
 .diff-legend-toggle { display: grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 1px solid #d3dbe9; border-radius: 999px; color: #6e7e99; font-size: 12px; font-weight: 900; background: #fff; }
 .diff-legend-toggle:hover, .diff-legend-toggle[aria-expanded="true"] { border-color: #aec0e3; color: #375eaa; background: #f2f6ff; }
-.diff-legend { position: absolute; z-index: 35; top: 12px; left: calc(100% + 9px); width: 284px; padding: 13px 14px; border: 1px solid #cfd9ec; border-radius: 10px; color: #50627e; font-size: 11px; line-height: 1.55; background: #fff; box-shadow: 0 16px 35px rgba(22,34,62,.16); }
+.diff-legend { position: relative; flex: 1 1 420px; min-width: 0; padding: 11px 36px 11px 14px; border: 1px solid #cfd9ec; border-radius: 10px; color: #50627e; font-size: 11px; line-height: 1.55; background: #fff; box-shadow: 0 8px 18px rgba(22,34,62,.08); }
 .diff-legend[hidden] { display: none; }
-.diff-legend strong { display: block; margin-bottom: 7px; color: var(--ink); font-size: 12px; }
-.diff-legend p { margin: 4px 0; }
+.diff-legend strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 12px; }
+.diff-legend p { display: inline; margin: 0 12px 0 0; }
 .diff-legend i { font-style: normal; font-weight: 800; }
 .legend-before { color: #b34f5c; }
 .legend-after { padding: 1px 3px; border-radius: 2px; color: #2d624d; background: rgba(188,234,210,.78); }
 .diff-legend-close { position: absolute; top: 5px; right: 6px; width: 23px; height: 23px; border: 0; border-radius: 6px; color: #71809a; background: transparent; }
 .diff-legend-close:hover { background: #f1f4fa; }
-.compare-start-hint { position: absolute; z-index: 4; top: 79px; left: 50%; width: 170px; padding: 8px; border: 1px solid #e2e7f0; border-radius: 9px; color: #77859d; font-size: 10px; line-height: 1.45; text-align: center; background: rgba(255,255,255,.95); transform: translateX(-50%); }
-.compare-start-hint[hidden] { display: none; }
 
 /* Source stays colour-only. Selected position is carried by the centre gutter. */
 .before-pane .compare-row.is-active,
@@ -509,9 +519,10 @@ kbd { padding: 1px 4px; border: 1px solid #d8dfeb; border-bottom-width: 2px; bor
 .rail-summary strong { color: var(--navy); font-size: 16px; line-height: 1; }
 .rail-sub { min-height: 12px; color: var(--ink-faint); font-size: 9px; font-weight: 750; text-align: center; }
 .rail-dots { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 5px; padding: 8px 9px; }
-.rail-hint { position: absolute; z-index: 25; top: 84px; right: calc(100% + 8px); width: 186px; padding: 9px 28px 9px 10px; border: 1px solid #d3ddec; border-radius: 9px; color: #5d6c86; font-size: 10px; line-height: 1.45; background: #fff; box-shadow: 0 12px 26px rgba(22,34,62,.14); }
+/* The rail hint stays inside the rail instead of floating over the working copy. */
+.rail-hint { position: relative; width: auto; margin: 0 5px 8px; padding: 6px 17px 6px 6px; border: 1px solid #d3ddec; border-radius: 7px; color: #5d6c86; font-size: 9px; line-height: 1.35; text-align: center; background: #fff; box-shadow: none; }
 .rail-hint[hidden] { display: none; }
-.rail-hint button { position: absolute; top: 4px; right: 5px; width: 20px; height: 20px; border: 0; border-radius: 5px; color: #74819b; background: transparent; }
+.rail-hint button { position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; border: 0; border-radius: 5px; color: #74819b; background: transparent; }
 .rail-hint button:hover { background: #f2f5fa; }
 .next-action { max-width: 280px; overflow: hidden; color: #5e6f8c; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .copy-wrap .primary-button:disabled { border-color: #d7dfeb; color: #94a0b3; box-shadow: none; background: #eef1f6; cursor: not-allowed; }
@@ -548,11 +559,19 @@ kbd { padding: 1px 4px; border: 1px solid #d8dfeb; border-bottom-width: 2px; bor
   .pane-empty-state { padding: 24px 15px; }
   .pane-empty-state strong { font-size: 15px; }
   .pane-empty-state p { font-size: 11px; }
-  .diff-legend { left: calc(100% + 4px); width: min(272px, calc(100vw - 78px)); }
+  .diff-legend { left: auto; width: auto; }
 }
 @media (max-width: 1120px) and (min-width: 721px) {
   .control-sidebar { display: flex; flex-direction: column; }
 }
 @media (max-width: 720px) {
   .control-sidebar { display: flex; flex-direction: column; }
+}
+
+/* v0.6.3 layout safety: guidance and contextual tools remain in document flow. */
+
+@media (max-width: 900px) {
+  .workspace-guidance { flex-direction: column; }
+  .diff-legend p { display: block; margin: 3px 0; }
+  .selection-toolbar { margin: 7px 10px -1px; }
 }
