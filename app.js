@@ -9,8 +9,9 @@
 
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
-  const VERSION = 'v0.5.0';
-  const AUTO_SAVE_KEY = 'text-review-studio-v0.5.0';
+  const VERSION = 'v0.6.2';
+  const AUTO_SAVE_KEY = 'text-review-studio-v0.6.2';
+  const LEGACY_SAVE_KEYS = ['text-review-studio-v0.6.1', 'text-review-studio-v0.6.0'];
 
   const STYLE_RULES = [
     { id: 'fw-space', label: '全角スペースを半角スペースに統一', category: '空白', pattern: /　/g, replacement: ' ', severity: 'minor' },
@@ -28,6 +29,33 @@
     { id: 'month', label: 'か月／ヶ月をヵ月に統一', category: '数字・単位', pattern: /([0-9０-９]+)(か月|ヶ月)/g, replacement: '$1ヵ月', severity: 'normal' }
   ];
 
+  const PROFILES = {
+    'urawa-news': {
+      name: '浦和公式サイト｜お知らせ記事',
+      summary: 'URL・メール・HTMLは保護。半角 ! ?・半角かっこ、統一表記、【見出し】の扱いを丁寧に確認します。',
+      absolute: ['fw-space'],
+      principle: ['double-space', 'trailing-space', 'exclamation', 'question', 'paren-left', 'paren-right', 'samazama', 'arakajime', 'seiippai', 'yoroshiku', 'nyudan', 'month'],
+      context: ['labels'],
+      defaults: { tagPolicy: 'keep', labelPolicy: 'tag', linePolicy: 'keep', linkPolicy: 'raw' }
+    },
+    'cms-html': {
+      name: 'CMS作業｜HTML優先',
+      summary: '既存タグを守りながら、ラベル・注記・リンクの構造を優先して仕上げます。記号や表記は提案として扱います。',
+      absolute: [],
+      principle: ['fw-space', 'double-space', 'trailing-space', 'exclamation', 'question', 'paren-left', 'paren-right'],
+      context: ['labels'],
+      defaults: { tagPolicy: 'keep', labelPolicy: 'tag', linePolicy: 'br', linkPolicy: 'raw' }
+    },
+    'free-edit': {
+      name: '自由編集｜提案を控えめ',
+      summary: '文章の意図を優先。空白・行末・明確な表記ゆれだけを静かに提案します。URL・メール・HTMLは常に保護します。',
+      absolute: [],
+      principle: ['trailing-space', 'double-space'],
+      context: ['labels'],
+      defaults: { tagPolicy: 'keep', labelPolicy: 'keep', linePolicy: 'keep', linkPolicy: 'raw' }
+    }
+  };
+
   const state = {
     title: '名称未設定の原稿',
     baseline: '',
@@ -37,6 +65,9 @@
     railOpen: false,
     reviews: {},
     skipped: {},
+    profile: 'urawa-news',
+    strict: false,
+    rulePrefs: { disabled: {} },
     output: {
       tagPolicy: 'keep',
       labelPolicy: 'tag',
@@ -58,9 +89,44 @@
     derived: null,
     pendingTransform: null,
     pendingCopy: null,
+    ui: { legendDismissed: false, railHintDismissed: false },
     debounceTimer: null,
     analyzing: false
   };
+
+  function activeProfile() {
+    return PROFILES[state.profile] || PROFILES['urawa-news'];
+  }
+
+  function rulePreferenceKey(ruleId) {
+    return `${state.profile}:${ruleId}`;
+  }
+
+  function ruleStrength(ruleId) {
+    const profile = activeProfile();
+    if (profile.absolute.includes(ruleId)) return 'absolute';
+    if (profile.context.includes(ruleId)) return 'context';
+    return 'principle';
+  }
+
+  function strengthLabel(strength) {
+    return ({ absolute: '絶対守る', principle: '原則守る', context: '文脈で判断' }[strength] || '確認');
+  }
+
+  function strengthReason(strength, ruleLabel = '') {
+    const head = ({
+      absolute: 'この原稿セットでは必ず守る基準です。',
+      principle: 'この原稿セットでは原則としてそろえる基準です。',
+      context: '文脈や引用・固有表記を見て判断する項目です。'
+    }[strength] || '確認が必要な項目です。');
+    return ruleLabel ? `${head} ${ruleLabel}` : head;
+  }
+
+  function activeStyleRules() {
+    const profile = activeProfile();
+    const enabled = new Set([...profile.absolute, ...profile.principle]);
+    return STYLE_RULES.filter(rule => enabled.has(rule.id) && !state.rulePrefs.disabled[rulePreferenceKey(rule.id)]);
+  }
 
   function escapeHTML(value = '') {
     return String(value).replace(/[&<>'"]/g, char => ({
@@ -121,9 +187,10 @@
   function makeStyleCandidates(text) {
     const output = [];
     const protectedAreas = protectedRanges(text);
-    for (const rule of STYLE_RULES) {
+    for (const rule of activeStyleRules()) {
       const scanner = new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`);
       const one = new RegExp(rule.pattern.source, rule.pattern.flags.replace('g', ''));
+      const strength = ruleStrength(rule.id);
       let match;
       while ((match = scanner.exec(text))) {
         if (!match[0]) { scanner.lastIndex += 1; continue; }
@@ -134,9 +201,11 @@
         output.push({
           id, type: 'style', category: rule.category, label: rule.label,
           before, after, start: match.index, end: match.index + before.length,
-          severity: rule.severity || classifySeverity(before, after),
+          severity: strength === 'absolute' ? 'critical' : (rule.severity || classifySeverity(before, after)),
+          strength, ruleId: rule.id, ruleKey: rulePreferenceKey(rule.id),
+          rationale: strengthReason(strength, rule.label),
           context: contextAt(text, match.index, match.index + before.length),
-          skipKey: signature('style', rule.id, before, after, contextAt(text, match.index, match.index + before.length, 22))
+          skipKey: signature('style', state.profile, rule.id, before, after, contextAt(text, match.index, match.index + before.length, 22))
         });
       }
     }
@@ -156,7 +225,8 @@
         id, type: 'label', category: 'HTML', label: '【ラベル】の扱い',
         before, after: `<span class="info24-label">${escapeHTML(value)}</span>`,
         start: offset, end: offset + line.length, line: index + 1,
-        leading: match[1], value, trailing: match[3], severity: 'normal',
+        leading: match[1], value, trailing: match[3], severity: 'normal', strength: 'context',
+        rationale: strengthReason('context', '見出しとして扱うか、原文のまま残すかを判断します。'),
         context: `${index + 1}行目：${line}`,
         skipKey: signature('label', before, index)
       });
@@ -180,7 +250,9 @@
       output.push({
         id, type: 'editorial', category: '校閲', label: note,
         before: match[0], after: match[0], start: match.index, end: match.index + match[0].length,
-        severity: expected === weekday ? 'normal' : 'critical', context: contextAt(text, match.index, match.index + match[0].length),
+        severity: expected === weekday ? 'normal' : 'critical', strength: 'absolute',
+        rationale: strengthReason('absolute', '日付・曜日の整合は公開前に確認します。'),
+        context: contextAt(text, match.index, match.index + match[0].length),
         skipKey: signature('editorial', match[0], match.index)
       });
     }
@@ -196,7 +268,7 @@
       type: 'manual', category: '差分', label: '人が修正した変更',
       before: hunk.before, after: hunk.after,
       start: hunk.afterStart, end: hunk.afterEnd,
-      severity: hunk.severity, order: index + 1,
+      severity: hunk.severity, strength: 'context', rationale: strengthReason('context', '人が入れた修正の意図を確認します。'), order: index + 1,
       context: contextAt(state.working, hunk.afterStart, hunk.afterEnd || hunk.afterStart),
       skipKey: signature('manual', hunk.before, hunk.after, hunk.afterStart)
     }));
@@ -215,11 +287,13 @@
     const label = makeLabelCandidates(state.working);
     const editorial = makeEditorialCandidates(state.working);
     const rankSeverity = { critical: 0, normal: 1, minor: 2 };
+    const rankStrength = { absolute: 0, principle: 1, context: 2 };
     const rankType = { editorial: 0, manual: 1, style: 2, label: 3 };
     return [...editorial, ...manual, ...style, ...label].sort((a, b) => {
       const statusRank = candidateStatus(a) === 'pending' ? 0 : 1;
       const otherStatusRank = candidateStatus(b) === 'pending' ? 0 : 1;
       if (statusRank !== otherStatusRank) return statusRank - otherStatusRank;
+      if (rankStrength[a.strength || 'context'] !== rankStrength[b.strength || 'context']) return rankStrength[a.strength || 'context'] - rankStrength[b.strength || 'context'];
       if (rankSeverity[a.severity] !== rankSeverity[b.severity]) return rankSeverity[a.severity] - rankSeverity[b.severity];
       return rankType[a.type] - rankType[b.type];
     });
@@ -229,7 +303,7 @@
     const list = candidates();
     const manualDiff = state.baseline && state.working ? Diff.diffText(state.baseline, state.working) : { parts: [], hunks: [] };
     const pending = list.filter(item => candidateStatus(item) === 'pending');
-    return { list, manualDiff, pending, critical: pending.filter(item => item.severity === 'critical'), done: list.filter(item => candidateStatus(item) !== 'pending') };
+    return { list, manualDiff, pending, critical: pending.filter(item => item.severity === 'critical'), absolute: pending.filter(item => item.strength === 'absolute'), done: list.filter(item => candidateStatus(item) !== 'pending') };
   }
 
   function ensureActive() {
@@ -245,6 +319,7 @@
     return JSON.stringify({
       title: state.title, baseline: state.baseline, working: state.working,
       mode: state.mode, activeId: state.activeId, reviews: state.reviews, skipped: state.skipped,
+      profile: state.profile, strict: state.strict, rulePrefs: state.rulePrefs,
       output: state.output, display: state.display, cmsHistory: state.cmsHistory, lastTransform: state.lastTransform
     });
   }
@@ -264,6 +339,9 @@
     state.activeId = data.activeId || null;
     state.reviews = data.reviews || {};
     state.skipped = data.skipped || {};
+    state.profile = PROFILES[data.profile] ? data.profile : state.profile;
+    state.strict = Boolean(data.strict);
+    state.rulePrefs = { disabled: {}, ...(data.rulePrefs || {}) };
     state.output = { ...state.output, ...(data.output || {}) };
     state.display = { ...state.display, ...(data.display || {}) };
     state.cmsHistory = data.cmsHistory || [];
@@ -271,6 +349,7 @@
     $('#projectTitle').value = state.title;
     $('#baselineText').value = state.baseline;
     $('#workingText').value = state.working;
+    if ($('#profileSelect')) $('#profileSelect').value = state.profile;
   }
 
   function undo() {
@@ -621,14 +700,28 @@
     return rows;
   }
 
+  /**
+   * The two panes intentionally use different visual grammar.
+   * - Baseline (left): changed/deleted source text uses colour only. No marker,
+   *   no underline and no strike-through; the centre gutter already explains that
+   *   the text was removed or replaced.
+   * - CMS working copy (right): new/replaced text uses a compact highlighter block.
+   * This keeps the source legible while letting the output side carry the action.
+   */
   function innerHunk(textBefore, textAfter, side) {
     const diff = Diff.diffText(textBefore, textAfter);
     return diff.parts.map(part => {
       if (side === 'before' && part.type === 'add') return '';
       if (side === 'after' && part.type === 'remove') return '';
-      const cls = part.type === 'remove' ? 'diff-del' : part.type === 'add' ? 'diff-add' : '';
+
       const rendered = renderText(part.value, { offset: 0 });
-      return cls ? `<mark class="${cls}">${rendered}</mark>` : rendered;
+      if (side === 'before' && part.type === 'remove') {
+        return `<span class="source-diff source-diff-remove">${rendered}</span>`;
+      }
+      if (side === 'after' && part.type === 'add') {
+        return `<span class="cms-diff cms-diff-add">${rendered}</span>`;
+      }
+      return rendered;
     }).join('');
   }
 
@@ -665,7 +758,9 @@
       afterSurface.hidden = true;
       $('#baselineText').hidden = false;
       $('#workingText').hidden = false;
-      gutter.innerHTML = '<span class="gutter-marker same">↔</span>';
+      $('#diffLegend').hidden = true;
+      $('.diff-legend-toggle').setAttribute('aria-expanded', 'false');
+      gutter.innerHTML = '<span class="gutter-marker same" aria-label="比較を開始すると差分を表示します">↔</span>';
       return;
     }
     beforeSurface.hidden = false;
@@ -690,41 +785,107 @@
     const meaningful = rows.filter(row => row.kind !== 'same');
     gutter.innerHTML = meaningful.length ? meaningful.map(row => {
       const symbol = row.kind === 'insert' ? '+' : row.kind === 'delete' ? '−' : '↔';
+      const kindLabel = row.kind === 'insert' ? '追加' : row.kind === 'delete' ? '削除' : '置換';
       const className = row.kind === 'insert' ? 'add' : row.kind === 'delete' ? 'remove' : 'replace';
       const important = row.severity === 'critical' ? ' critical' : '';
-      return `<button class="gutter-marker ${className}${important}" data-action="jump-row" data-row-id="${escapeHTML(row.id)}" title="差分へ移動">${symbol}</button>`;
-    }).join('') : '<span class="gutter-marker same">✓</span>';
+      const active = rowIsActive(row) ? ' is-active' : '';
+      return `<button class="gutter-marker ${className}${important}${active}" data-action="jump-row" data-row-id="${escapeHTML(row.id)}" title="${kindLabel}の差分へ移動" aria-label="差分：${kindLabel}。該当箇所へ移動" aria-current="${rowIsActive(row) ? 'true' : 'false'}">${symbol}</button>`;
+    }).join('') : '<span class="gutter-marker same" aria-label="差分はありません">✓</span>';
+    renderDiffLegend();
+  }
+
+  function renderEntryGuides() {
+    const edit = state.mode === 'edit';
+    const baselineGuide = $('#baselineEmptyState');
+    const workingGuide = $('#workingEmptyState');
+    const compareHint = $('#compareStartHint');
+    const sidebarHint = $('#sidebarStartHint');
+    const sidebarText = $('#sidebarStartHintText');
+    const noBaseline = !state.baseline;
+    const noWorking = !state.working;
+
+    baselineGuide.hidden = !(edit && noBaseline);
+    workingGuide.hidden = !(edit && noWorking);
+    compareHint.hidden = !(edit && (noBaseline || noWorking));
+    sidebarHint.hidden = !(noBaseline || noWorking);
+
+    if (noBaseline && state.working) {
+      $('#baselineEmptyTitle').textContent = '比較する場合：変更前を貼る';
+      $('#baselineEmptyText').textContent = '比較元を入れると、左右の違いをここで確認できます。';
+    } else {
+      $('#baselineEmptyTitle').textContent = '変更前の原稿を貼る';
+      $('#baselineEmptyText').textContent = '比較したい元の文章を、ここに貼り付けます。';
+    }
+    if (noWorking && state.baseline) {
+      $('#workingEmptyTitle').textContent = '次に、修正後の原稿を貼る';
+      $('#workingEmptyText').textContent = '左右にそろえて差分を確認するための、修正後の文章です。';
+    } else {
+      $('#workingEmptyTitle').textContent = '修正後の原稿を貼る';
+      $('#workingEmptyText').textContent = '比較する修正後の文章を、ここに貼り付けます。比較せずCMS作業を始めることもできます。';
+    }
+    if (noBaseline && noWorking) sidebarText.textContent = '変更前と修正後を左右に貼り付けます。';
+    else if (state.baseline && noWorking) sidebarText.textContent = '次に、右側へ修正後の原稿を貼ると差分を確認できます。';
+    else if (noBaseline && state.working) sidebarText.textContent = 'CMS作業は始められます。比較する場合は左に変更前を貼ります。';
+  }
+
+  function renderDiffLegend() {
+    const canCompare = state.mode === 'compare' && Boolean(state.baseline && state.working);
+    const legend = $('#diffLegend');
+    const button = $('.diff-legend-toggle');
+    const shouldShow = canCompare && !state.ui.legendDismissed;
+    legend.hidden = !shouldShow;
+    button.setAttribute('aria-expanded', String(shouldShow));
   }
 
   function renderStats() {
     const b = stats(state.baseline);
     const w = stats(state.working);
+    const pending = state.derived?.pending?.length || 0;
+    const critical = state.derived?.critical?.length || 0;
+    const absolute = state.derived?.absolute?.length || 0;
+    const hasWorking = Boolean(state.working);
     $('#baselineStats').textContent = `${b.chars.toLocaleString()}文字・${b.lines.toLocaleString()}行`;
     $('#workingStats').textContent = `${w.chars.toLocaleString()}文字・${w.lines.toLocaleString()}行`;
     $('#workingMeta').textContent = `URL ${w.urls}件・HTMLタグ ${w.tags}件`;
-    $('#analysisState').textContent = state.analyzing ? '差分を更新中…' : state.working ? '比較・確認は最新' : '入力待ち';
+    let message = '変更前と修正後を入力してください';
+    let next = 'まず、左右に原稿を貼ります';
+    if (state.analyzing) { message = '差分を更新中…'; next = '入力内容を反映しています'; }
+    else if (state.baseline && !state.working) { message = '次に、修正後を入力してください'; next = '右側へ修正後の原稿を貼ります'; }
+    else if (!state.baseline && state.working) { message = '比較なしでCMS作業を始められます'; next = '比較する場合は、左側へ変更前を貼ります'; }
+    else if (state.baseline && state.working) {
+      message = state.strict && absolute ? `絶対守る ${absolute}件` : '比較・確認は最新';
+      next = critical ? `次に確認：重要項目 ${critical}件` : pending ? `次に確認：未確認 ${pending}件` : '公開前チェック：重要項目は確認済み';
+    }
+    $('#analysisState').textContent = message;
+    $('#nextAction').textContent = next;
     $('#processingCount').textContent = `CMS加工 ${state.cmsHistory.length}件`;
+    $('#copyButton').disabled = !hasWorking;
+    if (!hasWorking) { $('#copyMenu').hidden = true; $('#copyButton').setAttribute('aria-expanded', 'false'); }
     $('#ghostButton').disabled = !state.lastTransform;
     $('#ghostButton').classList.toggle('is-active', state.showGhost);
     $('#ghostButton').textContent = state.showGhost ? '加工前の重ね表示を閉じる' : '加工前を重ねて表示';
     $('#editModeButton').classList.toggle('is-active', state.mode === 'edit');
     $('#compareModeButton').classList.toggle('is-active', state.mode === 'compare');
+    renderEntryGuides();
   }
 
   function renderReviewRail() {
     const list = state.derived.list;
     const pending = state.derived.pending;
     const critical = state.derived.critical;
+    const absolute = state.derived.absolute;
     const done = state.derived.done;
-    $('#railTotal').textContent = pending.length;
-    $('#railSub').textContent = pending.length ? `未確認 ${pending.length}` : list.length ? '確認完了' : '入力待ち';
+    $('#railTotal').textContent = `${pending.length}件`;
+    $('#railSub').textContent = critical.length ? `重要 ${critical.length}` : pending.length ? '未確認' : list.length ? '完了' : '入力待ち';
+    const railHint = $('#reviewRailHint');
+    railHint.hidden = !(list.length && !state.ui.railHintDismissed);
     $('#reviewCounts').innerHTML = `
       <div class="count-tile critical"><strong>${critical.length}</strong><span>重要</span></div>
       <div class="count-tile pending"><strong>${pending.length}</strong><span>未確認</span></div>
       <div class="count-tile done"><strong>${done.length}</strong><span>完了</span></div>
     `;
     $('#queueListCount').textContent = `${list.length}件`;
-    $('#railDots').innerHTML = list.slice(0, 14).map(item => `<span class="rail-dot ${item.severity === 'critical' && candidateStatus(item) === 'pending' ? 'critical' : candidateStatus(item) === 'pending' ? 'pending' : 'done'}"></span>`).join('');
+    $('#railDots').innerHTML = list.slice(0, 14).map(item => `<span class="rail-dot ${item.strength === 'absolute' && candidateStatus(item) === 'pending' ? 'critical' : candidateStatus(item) === 'pending' ? 'pending' : 'done'}"></span>`).join('');
 
     const active = activeCandidate();
     const panel = $('#activeReview');
@@ -733,6 +894,7 @@
     } else {
       const status = candidateStatus(active);
       const type = ({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[active.type] || '確認');
+      const strength = active.strength || 'context';
       const label = active.type === 'manual'
         ? active.before && active.after ? `${truncate(active.before, 32)} → ${truncate(active.after, 32)}` : active.before ? `削除：${truncate(active.before, 32)}` : `追加：${truncate(active.after, 32)}`
         : active.type === 'label' ? active.before : active.type === 'editorial' ? active.before : `${active.before} → ${active.after}`;
@@ -741,8 +903,8 @@
         ? `<button data-action="review-pending" data-id="${escapeHTML(active.id)}">未確認に戻す</button>`
         : `<button class="safe" data-action="review-done" data-id="${escapeHTML(active.id)}">確認済み</button><button data-action="add-note" data-id="${escapeHTML(active.id)}">メモ</button>`;
       if (active.type === 'style') actions = status === 'skipped'
-        ? `<button data-action="unskip" data-id="${escapeHTML(active.id)}">除外を戻す</button>`
-        : `<button class="primary" data-action="apply-candidate" data-id="${escapeHTML(active.id)}">反映</button><button class="skip" data-action="skip-candidate" data-id="${escapeHTML(active.id)}">今回は残す</button>`;
+        ? `<button data-action="unskip" data-id="${escapeHTML(active.id)}">今回は残すを戻す</button>`
+        : `<button class="primary" data-action="apply-candidate" data-id="${escapeHTML(active.id)}">反映</button><button class="skip" data-action="skip-candidate" data-id="${escapeHTML(active.id)}">今回は残す</button><button class="keep-rule" data-action="keep-rule" data-id="${escapeHTML(active.id)}">今後もこの表記を残す</button>`;
       if (active.type === 'label') actions = status === 'skipped'
         ? `<button data-action="unskip" data-id="${escapeHTML(active.id)}">保留を戻す</button>`
         : `<button class="primary" data-action="apply-label" data-id="${escapeHTML(active.id)}" data-value="tag">ラベル化</button><button class="safe" data-action="apply-label" data-id="${escapeHTML(active.id)}" data-value="plain">かっこだけ外す</button><button class="skip" data-action="skip-candidate" data-id="${escapeHTML(active.id)}">そのまま</button>`;
@@ -753,8 +915,10 @@
         <div class="change-pair"><div class="before"><label>変更前</label><span>${escapeHTML(active.before || '（追加）')}</span></div><div class="after"><label>変更後</label><span>${escapeHTML(active.after || '（削除）')}</span></div></div>` : '';
       panel.innerHTML = `
         <span class="review-type ${active.severity === 'critical' ? 'critical' : ''}">${type}${active.severity === 'critical' ? '｜重要' : ''}</span>
+        <span class="rule-badge ${strength}">${escapeHTML(strengthLabel(strength))}</span>
         <h3>${escapeHTML(label)}</h3>
         <p>${escapeHTML(active.label)}<br>${escapeHTML(active.context)}</p>
+        <p class="review-reason">${escapeHTML(active.rationale || strengthReason(strength, active.label))}</p>
         ${pair}
         <div class="review-actions">${actions}</div>
         <div class="next-row"><span>${status === 'pending' ? '未確認' : status === 'skipped' ? '保留・除外済み' : '確認済み'}</span><button data-action="next-pending">次の未確認へ →</button></div>
@@ -764,8 +928,77 @@
     $('#queueList').innerHTML = list.map(item => {
       const status = candidateStatus(item);
       const title = item.type === 'label' ? item.before : item.type === 'editorial' ? item.before : item.before && item.after ? `${truncate(item.before, 28)} → ${truncate(item.after, 28)}` : truncate(item.before || item.after, 28);
-      return `<button class="queue-item ${item.id === state.activeId ? 'is-active' : ''}" data-action="select-candidate" data-id="${escapeHTML(item.id)}"><span class="q-kind">${({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[item.type])} ・ ${status === 'pending' ? '未確認' : status === 'done' ? '完了' : '保留'}</span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.label)}</small></button>`;
+      return `<button class="queue-item ${item.id === state.activeId ? 'is-active' : ''}" data-action="select-candidate" data-id="${escapeHTML(item.id)}"><span class="q-kind">${({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[item.type])} ・ ${strengthLabel(item.strength || 'context')} ・ ${status === 'pending' ? '未確認' : status === 'done' ? '完了' : '保留'}</span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.label)}</small></button>`;
     }).join('') || '<p class="history-empty">確認項目はありません。</p>';
+    void absolute;
+  }
+
+  function renderProfile() {
+    const profile = activeProfile();
+    const disabled = Object.values(state.rulePrefs.disabled || {}).filter(item => item.profile === state.profile).length;
+    if ($('#profileSelect')) $('#profileSelect').value = state.profile;
+    $('#profileSummary').textContent = profile.summary;
+    $('#ruleStrengthList').innerHTML = [
+      ['absolute', '絶対守る', 'URL・メール・HTMLを保護'],
+      ['principle', '原則守る', `${profile.principle.length + profile.absolute.length}ルール`],
+      ['context', '文脈で判断', '見出し・引用・固有表記']
+    ].map(([kind, title, detail]) => `<div class="rule-strength ${kind}"><i></i><strong>${title}</strong><small>${detail}</small></div>`).join('');
+    $('#exceptionCount').textContent = disabled;
+    [$('#strictModeTop'), $('#strictModeSide')].forEach(button => {
+      button.textContent = state.strict ? '厳密 ON' : '厳密 OFF';
+      button.classList.toggle('is-on', state.strict);
+      button.setAttribute('aria-pressed', String(state.strict));
+    });
+    ['whitespace', 'tags', 'urls', 'pendingOnly'].forEach(key => {
+      const ids = { whitespace: ['showWhitespace', 'sideWhitespace'], tags: ['showTags', 'sideTags'], urls: ['showUrls', 'sideUrls'], pendingOnly: ['pendingOnly', 'sidePendingOnly'] }[key];
+      ids.forEach(id => { const el = $(`#${id}`); if (el) el.checked = Boolean(state.display[key]); });
+    });
+    if ($('#sideSearchInput')) $('#sideSearchInput').value = state.search.query || '';
+  }
+
+  function renderExceptions() {
+    const entries = Object.entries(state.rulePrefs.disabled || {}).filter(([, item]) => item.profile === state.profile);
+    const target = $('#exceptionList');
+    if (!entries.length) {
+      target.innerHTML = '<p class="exception-empty">このセットには固定例外がありません。候補で「今後もこの表記を残す」を選ぶと、ここに理由ごと残ります。</p>';
+      return;
+    }
+    target.innerHTML = entries.map(([key, item]) => `<article class="exception-item"><div><strong>${escapeHTML(item.label || item.ruleId)}</strong><small>${escapeHTML(item.note || 'このこだわりセットでは、以後候補に出しません。')}</small></div><button data-action="restore-rule" data-key="${escapeHTML(key)}">ルールに戻す</button></article>`).join('');
+  }
+
+  function setProfile(value) {
+    if (!PROFILES[value] || value === state.profile) return;
+    pushUndo();
+    state.profile = value;
+    const profile = activeProfile();
+    state.output = { ...state.output, ...profile.defaults };
+    state.activeId = null;
+    renderAll();
+    notify(`こだわりセットを「${profile.name}」に切り替えました`);
+  }
+
+  function toggleStrict() {
+    pushUndo();
+    state.strict = !state.strict;
+    renderAll();
+    notify(state.strict ? '厳密モードをONにしました。絶対守る基準をコピー前に明示します。' : '厳密モードをOFFにしました。');
+  }
+
+  function keepRule(id) {
+    const candidate = state.derived.list.find(item => item.id === id);
+    if (!candidate?.ruleId) return;
+    pushUndo();
+    state.rulePrefs.disabled[candidate.ruleKey] = { ruleId: candidate.ruleId, profile: state.profile, label: candidate.label, note: `「${candidate.before}」を残す作法`, at: new Date().toISOString() };
+    renderAll();
+    notify('今後もこの表記を残す設定にしました');
+  }
+
+  function restoreRule(key) {
+    if (!state.rulePrefs.disabled[key]) return;
+    pushUndo();
+    delete state.rulePrefs.disabled[key];
+    renderAll();
+    notify('この表記ルールを再び提案する設定に戻しました');
   }
 
   function renderHistory() {
@@ -797,9 +1030,11 @@
     state.derived = derive();
     ensureActive();
     renderStats();
+    renderProfile();
     renderCompare();
     renderReviewRail();
     renderHistory();
+    renderExceptions();
     renderOutputSettings();
     renderSelectionToolbar();
     renderUndo();
@@ -813,14 +1048,14 @@
 
   function persist() {
     try {
-      const data = { version: VERSION, title: state.title, baseline: state.baseline, working: state.working, output: state.output, cmsHistory: state.cmsHistory, exportedAt: new Date().toISOString() };
+      const data = { version: VERSION, title: state.title, baseline: state.baseline, working: state.working, profile: state.profile, strict: state.strict, rulePrefs: state.rulePrefs, output: state.output, cmsHistory: state.cmsHistory, ui: state.ui, exportedAt: new Date().toISOString() };
       localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify(data));
     } catch { /* Storage can be unavailable. The app still works. */ }
   }
 
   function hydrate() {
     try {
-      const raw = localStorage.getItem(AUTO_SAVE_KEY);
+      const raw = localStorage.getItem(AUTO_SAVE_KEY) || LEGACY_SAVE_KEYS.map(key => localStorage.getItem(key)).find(Boolean);
       if (!raw) return;
       const data = JSON.parse(raw);
       if (typeof data.working !== 'string') return;
@@ -828,10 +1063,15 @@
       state.baseline = data.baseline || '';
       state.working = data.working || '';
       state.output = { ...state.output, ...(data.output || {}) };
+      state.profile = PROFILES[data.profile] ? data.profile : state.profile;
+      state.strict = Boolean(data.strict);
+      state.rulePrefs = { disabled: {}, ...(data.rulePrefs || {}) };
       state.cmsHistory = data.cmsHistory || [];
+      state.ui = { ...state.ui, ...(data.ui || {}) };
       $('#projectTitle').value = state.title;
       $('#baselineText').value = state.baseline;
       $('#workingText').value = state.working;
+      if ($('#profileSelect')) $('#profileSelect').value = state.profile;
       $('#saveState').textContent = 'この端末に保存中';
     } catch { /* Ignore malformed stale data. */ }
   }
@@ -847,6 +1087,38 @@
     state.railOpen = typeof force === 'boolean' ? force : !state.railOpen;
     panel.hidden = !state.railOpen;
     $('.rail-summary').setAttribute('aria-expanded', String(state.railOpen));
+    if (state.railOpen) {
+      state.ui.railHintDismissed = true;
+      $('#reviewRailHint').hidden = true;
+      persist();
+    }
+  }
+
+  function toggleDiffLegend() {
+    const legend = $('#diffLegend');
+    const button = $('.diff-legend-toggle');
+    const open = legend.hidden;
+    legend.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    if (!open) { state.ui.legendDismissed = true; persist(); }
+  }
+
+  function closeDiffLegend() {
+    $('#diffLegend').hidden = true;
+    $('.diff-legend-toggle').setAttribute('aria-expanded', 'false');
+    state.ui.legendDismissed = true;
+    persist();
+  }
+
+  function closeRailHint() {
+    state.ui.railHintDismissed = true;
+    $('#reviewRailHint').hidden = true;
+    persist();
+  }
+
+  function focusPane(which) {
+    if (state.mode !== 'edit') setMode('edit');
+    requestAnimationFrame(() => $(`#${which === 'baseline' ? 'baselineText' : 'workingText'}`).focus());
   }
 
   function selectCandidate(id) {
@@ -957,8 +1229,10 @@
     notify('メモを記録しました');
   }
 
+  function closeIfOpen(selector) { const dialog = $(selector); if (dialog?.open) dialog.close(); }
+
   function openSearch() {
-    $('#commandDialog').close();
+    closeIfOpen('#commandDialog');
     state.search.open = true;
     $('#searchBar').hidden = false;
     setTimeout(() => $('#searchInput').focus(), 0);
@@ -970,6 +1244,7 @@
     state.search.current = 0;
     state.search.matches = [];
     $('#searchInput').value = '';
+    if ($('#sideSearchInput')) $('#sideSearchInput').value = '';
     $('#searchBar').hidden = true;
     renderCompare();
   }
@@ -989,6 +1264,8 @@
     state.search.matches = matches;
     if (state.search.current >= matches.length) state.search.current = 0;
     $('#searchCount').textContent = query ? `${matches.length}件` : '0件';
+    if ($('#sideSearchInput')) $('#sideSearchInput').value = query;
+    if (query) { state.search.open = true; $('#searchBar').hidden = false; }
     renderCompare();
   }
 
@@ -1030,7 +1307,7 @@
   }
 
   function openTransform(recipe) {
-    $('#commandDialog').close();
+    closeIfOpen('#commandDialog');
     const result = runRecipe(recipe);
     state.pendingTransform = result;
     $('#transformTitle').textContent = result.description;
@@ -1081,12 +1358,14 @@
     $('#copyMenu').hidden = true;
     $('#copyButton').setAttribute('aria-expanded', 'false');
     const pending = state.derived.pending;
-    if (pending.length) {
+    const absolute = state.derived.absolute || [];
+    if (pending.length || (state.strict && absolute.length)) {
       state.pendingCopy = kind;
       const critical = pending.filter(item => item.severity === 'critical').length;
-      $('#copyConfirmText').textContent = critical
+      const strictMessage = state.strict && absolute.length ? `厳密モード：絶対守る基準が${absolute.length}件、未確認です。` : '';
+      $('#copyConfirmText').textContent = strictMessage || (critical
         ? `重要な未確認が${critical}件、未確認が合計${pending.length}件あります。内容を把握したうえでコピーしてください。`
-        : `未確認の項目が${pending.length}件あります。このままコピーできます。`;
+        : `未確認の項目が${pending.length}件あります。このままコピーできます。`);
       $('#copyConfirmDialog').showModal();
       return;
     }
@@ -1115,12 +1394,12 @@
   }
 
   function buildReport() {
-    const lines = [`Text Review Studio ${VERSION}｜${state.title}`, `作成日時：${new Date().toLocaleString('ja-JP')}`, ''];
+    const lines = [`Text Review Studio ${VERSION}｜${state.title}`, `作成日時：${new Date().toLocaleString('ja-JP')}`, `こだわりセット：${activeProfile().name}｜厳密モード：${state.strict ? 'ON' : 'OFF'}`, ''];
     if (!state.derived.list.length) lines.push('確認対象はありません。');
     state.derived.list.forEach((item, index) => {
       const status = candidateStatus(item) === 'pending' ? '未確認' : candidateStatus(item) === 'done' ? '確認済み' : '保留';
       const type = ({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[item.type]);
-      lines.push(`${index + 1}. [${type}／${status}${item.severity === 'critical' ? '／重要' : ''}] ${item.before && item.after ? `${item.before} → ${item.after}` : item.before || item.label}`);
+      lines.push(`${index + 1}. [${type}／${strengthLabel(item.strength || 'context')}／${status}${item.severity === 'critical' ? '／重要' : ''}] ${item.before && item.after ? `${item.before} → ${item.after}` : item.before || item.label}`);
       lines.push(`   内容：${item.label}`);
     });
     if (state.cmsHistory.length) {
@@ -1206,7 +1485,7 @@
   }
 
   function exportWork() {
-    const payload = { version: VERSION, title: state.title, baseline: state.baseline, working: state.working, output: state.output, reviews: state.reviews, skipped: state.skipped, cmsHistory: state.cmsHistory, exportedAt: new Date().toISOString() };
+    const payload = { version: VERSION, title: state.title, baseline: state.baseline, working: state.working, profile: state.profile, strict: state.strict, rulePrefs: state.rulePrefs, output: state.output, reviews: state.reviews, skipped: state.skipped, cmsHistory: state.cmsHistory, ui: state.ui, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1229,9 +1508,13 @@
         state.output = { ...state.output, ...(data.output || {}) };
         state.reviews = data.reviews || {};
         state.skipped = data.skipped || {};
+        state.profile = PROFILES[data.profile] ? data.profile : state.profile;
+        state.strict = Boolean(data.strict);
+        state.rulePrefs = { disabled: {}, ...(data.rulePrefs || {}) };
         state.cmsHistory = data.cmsHistory || [];
+        state.ui = { ...state.ui, ...(data.ui || {}) };
         state.undoStack = []; state.redoStack = [];
-        $('#projectTitle').value = state.title; $('#baselineText').value = state.baseline; $('#workingText').value = state.working;
+        $('#projectTitle').value = state.title; $('#baselineText').value = state.baseline; $('#workingText').value = state.working; if ($('#profileSelect')) $('#profileSelect').value = state.profile;
         $('#moreDialog').close();
         renderAll();
         notify('作業データを読み込みました');
@@ -1247,10 +1530,18 @@
       case 'redo': redo(); break;
       case 'set-mode': setMode(control.dataset.mode); break;
       case 'toggle-review-rail': toggleRail(); break;
-      case 'toggle-copy-menu': $('#copyMenu').hidden = !$('#copyMenu').hidden; $('#copyButton').setAttribute('aria-expanded', String(!$('#copyMenu').hidden)); break;
+      case 'toggle-diff-legend': toggleDiffLegend(); break;
+      case 'close-diff-legend': closeDiffLegend(); break;
+      case 'close-rail-hint': closeRailHint(); break;
+      case 'focus-baseline': focusPane('baseline'); break;
+      case 'focus-working': focusPane('working'); break;
+      case 'toggle-copy-menu': if (!$('#copyButton').disabled) { $('#copyMenu').hidden = !$('#copyMenu').hidden; $('#copyButton').setAttribute('aria-expanded', String(!$('#copyMenu').hidden)); } break;
       case 'request-copy': requestCopy(control.dataset.copyType); break;
       case 'confirm-copy': performCopy(state.pendingCopy); break;
       case 'open-command': $('#commandDialog').showModal(); break;
+      case 'toggle-strict': toggleStrict(); break;
+      case 'left-quick-search': state.search.query = control.dataset.query; state.search.current = 0; $('#searchInput').value = state.search.query; if ($('#sideSearchInput')) $('#sideSearchInput').value = state.search.query; computeSearch(); goSearch(0); break;
+      case 'clear-side-search': closeSearch(); break;
       case 'open-more': $('#moreDialog').showModal(); break;
       case 'open-search': openSearch(); break;
       case 'close-search': closeSearch(); break;
@@ -1262,10 +1553,10 @@
       case 'replace-all': replaceSearch(true); break;
       case 'open-transform': openTransform(control.dataset.recipe); break;
       case 'apply-pending-transform': applyPendingTransform(); break;
-      case 'open-pattern-tags': $('#commandDialog').close(); $('#patternDialog').showModal(); break;
+      case 'open-pattern-tags': closeIfOpen('#commandDialog'); $('#patternDialog').showModal(); break;
       case 'preview-pattern': previewPattern(control.dataset.pattern); break;
-      case 'unwrap-working-tags': $('#commandDialog').close(); openTransform('unwrap'); break;
-      case 'open-display-settings': $('#commandDialog').close(); $('#displayDialog').showModal(); break;
+      case 'unwrap-working-tags': closeIfOpen('#commandDialog'); openTransform('unwrap'); break;
+      case 'open-display-settings': closeIfOpen('#commandDialog'); $('#displayDialog').showModal(); break;
       case 'toggle-display-settings': $('#displayDialog').showModal(); break;
       case 'toggle-ghost': state.showGhost = !state.showGhost; renderAll(); break;
       case 'wrap-selection': wrapSelection(control.dataset.tag); break;
@@ -1274,6 +1565,8 @@
       case 'review-done': reviewDone(control.dataset.id); break;
       case 'review-pending': reviewPending(control.dataset.id); break;
       case 'skip-candidate': skipCandidate(control.dataset.id); break;
+      case 'keep-rule': keepRule(control.dataset.id); break;
+      case 'restore-rule': restoreRule(control.dataset.key); break;
       case 'unskip': unskip(control.dataset.id); break;
       case 'apply-candidate': applyCandidate(control.dataset.id); break;
       case 'apply-label': applyLabel(control.dataset.id, control.dataset.value); break;
@@ -1281,6 +1574,7 @@
       case 'jump-row': jumpRow(control.dataset.rowId); break;
       case 'toggle-output-settings': toggleDrawer('#outputSettings', '#outputSettingsButton'); break;
       case 'toggle-history': toggleDrawer('#historyDrawer', '#historyButton'); break;
+      case 'toggle-exceptions': toggleDrawer('#exceptionsDrawer', '#exceptionsButton'); break;
       case 'set-tag-policy': setOutput('tagPolicy', control.dataset.value); break;
       case 'set-label-policy': setOutput('labelPolicy', control.dataset.value); break;
       case 'set-line-policy': setOutput('linePolicy', control.dataset.value); break;
@@ -1313,6 +1607,8 @@
   $('#workingText').addEventListener('input', event => { state.working = event.target.value; hideSelectionToolbar(); scheduleAnalysis('working'); });
   $('#baselineText').addEventListener('input', event => { state.baseline = event.target.value; scheduleAnalysis('baseline'); });
   $('#projectTitle').addEventListener('input', event => { state.title = event.target.value || '名称未設定の原稿'; persist(); });
+  $('#profileSelect').addEventListener('change', event => setProfile(event.target.value));
+  $('#sideSearchInput').addEventListener('input', event => { state.search.query = event.target.value; state.search.current = 0; $('#searchInput').value = state.search.query; computeSearch(); });
   $('#workingText').addEventListener('mouseup', showSelectionToolbar);
   $('#workingText').addEventListener('keyup', event => { if (event.shiftKey || ['ArrowLeft', 'ArrowRight'].includes(event.key)) showSelectionToolbar(); });
   $('#workingText').addEventListener('blur', () => setTimeout(hideSelectionToolbar, 180));
@@ -1323,9 +1619,13 @@
     $(`#${id}`).addEventListener('change', event => {
       const key = ({ showWhitespace: 'whitespace', showTags: 'tags', showUrls: 'urls', pendingOnly: 'pendingOnly' }[id]);
       state.display[key] = event.target.checked;
-      renderCompare();
+      renderAll();
     });
   });
+  $$('[data-display-layer]').forEach(input => input.addEventListener('change', event => {
+    state.display[input.dataset.displayLayer] = event.target.checked;
+    renderAll();
+  }));
 
   document.addEventListener('keydown', event => {
     const target = event.target;

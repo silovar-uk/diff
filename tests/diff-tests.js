@@ -38,4 +38,4 @@ function assertRoundTrip(before, after, note) {
   assertRoundTrip(before, after, 'large single line fallback');
 }
 
-console.log('v0.4.0 diff tests: passed');
+console.log('v0.6.2 diff tests: passed');

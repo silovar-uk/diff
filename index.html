@@ -9,14 +9,14 @@
   <link rel="apple-touch-icon" href="assets/app-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
-  <title>Text Review Studio — v0.5.0</title>
+  <title>Text Review Studio — v0.6.2</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="#" data-action="scroll-top" aria-label="Text Review Studio">
         <img src="assets/app-icon.png" alt="" />
-        <span class="brand-text"><strong>Text Review Studio</strong><small>side-by-side review desk</small></span>
+        <span class="brand-text"><strong>Text Review Studio</strong><small>side-by-side editorial desk</small></span>
       </a>
 
       <label class="title-field" title="原稿名">
@@ -27,15 +27,17 @@
       <div class="top-status" aria-live="polite">
         <span id="saveState">ローカル処理中</span>
         <span class="status-dot">•</span>
-        <span id="analysisState">入力待ち</span>
+        <span id="analysisState">変更前と修正後を入力してください</span>
+        <span class="status-dot">•</span>
+        <button class="profile-status" id="strictModeTop" data-action="toggle-strict" title="厳密モードを切り替え">厳密モード OFF</button>
       </div>
 
       <div class="top-actions">
         <button class="icon-button" data-action="undo" id="undoButton" title="元に戻す (⌘Z)" aria-label="元に戻す" disabled>↶</button>
         <button class="icon-button" data-action="redo" id="redoButton" title="やり直す (⌘⇧Z)" aria-label="やり直す" disabled>↷</button>
-        <button class="secondary-button command-button" data-action="open-command">⌘ 操作</button>
+        
         <div class="copy-wrap">
-          <button class="primary-button" id="copyButton" data-action="toggle-copy-menu" aria-expanded="false">コピー <span>⌄</span></button>
+          <button class="primary-button" id="copyButton" data-action="toggle-copy-menu" aria-expanded="false" disabled>コピー <span>⌄</span></button>
           <div id="copyMenu" class="copy-menu" hidden>
             <p class="menu-caption">どこへ貼りますか？</p>
             <button data-action="request-copy" data-copy-type="plain"><strong>CMS本文へ</strong><span>整形後テキストをコピー</span></button>
@@ -48,13 +50,119 @@
     </header>
 
     <main class="workspace">
+
+      <div class="workspace-layout">
+        <aside class="control-sidebar" aria-label="校正・CMS操作">
+          <section class="sidebar-start-hint" id="sidebarStartHint" aria-live="polite">
+            <span class="sidebar-start-step">最初に</span>
+            <p id="sidebarStartHintText">変更前と修正後を左右に貼り付けます。</p>
+          </section>
+
+          <details class="menu-group quick-group" open>
+            <summary>
+              <span class="menu-group-icon" aria-hidden="true">⌕</span>
+              <span><strong>まず使う</strong><small>検索・よく使う整形</small></span>
+              <span class="menu-group-chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="menu-group-body">
+              <section class="tool-section tool-section--plain">
+                <header class="side-section-head compact"><div><p class="eyebrow">FIND</p><h2>探す</h2></div></header>
+                <label class="side-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="sideSearchInput" placeholder="文字列・記号を探す" aria-label="左メニューから検索" />
+                  <button class="icon-button small" data-action="clear-side-search" aria-label="検索をクリア">×</button>
+                </label>
+                <div class="chip-grid">
+                  <button data-action="left-quick-search" data-query="　">全角空白</button>
+                  <button data-action="left-quick-search" data-query=" ">半角空白</button>
+                  <button data-action="left-quick-search" data-query="！">全角！</button>
+                  <button data-action="left-quick-search" data-query="!">半角!</button>
+                  <button data-action="left-quick-search" data-query="【">【】</button>
+                  <button data-action="left-quick-search" data-query="https://">URL</button>
+                </div>
+                <button class="side-row-button" data-action="open-search"><span>検索・置換を開く</span><b>→</b></button>
+              </section>
+              <section class="tool-section tool-section--plain">
+                <header class="side-section-head compact"><div><p class="eyebrow">QUICK POLISH</p><h2>よく使う整え方</h2></div></header>
+                <div class="quick-craft quick-craft--open">
+                  <button data-action="open-transform" data-recipe="space">全角空白を確認</button>
+                  <button data-action="open-transform" data-recipe="symbol">! ? を半角に</button>
+                  <button data-action="open-transform" data-recipe="notation">表記を統一</button>
+                  <button data-action="open-transform" data-recipe="newline">空行を整理</button>
+                </div>
+              </section>
+            </div>
+          </details>
+
+          <details class="menu-group">
+            <summary>
+              <span class="menu-group-icon" aria-hidden="true">◆</span>
+              <span><strong>こだわり</strong><small>原稿ごとの作法</small></span>
+              <span class="menu-group-chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="menu-group-body">
+              <section class="preference-card">
+                <header class="side-section-head">
+                  <div>
+                    <p class="eyebrow">STYLE PROFILE</p>
+                    <h2>こだわりセット</h2>
+                  </div>
+                  <button class="side-quiet" data-action="toggle-strict" id="strictModeSide">厳密 OFF</button>
+                </header>
+                <label class="profile-select-label">
+                  <span>適用中</span>
+                  <select id="profileSelect" aria-label="こだわりセットを選択">
+                    <option value="urawa-news">浦和公式サイト｜お知らせ記事</option>
+                    <option value="cms-html">CMS作業｜HTML優先</option>
+                    <option value="free-edit">自由編集｜提案を控えめ</option>
+                  </select>
+                </label>
+                <p id="profileSummary" class="profile-summary"></p>
+                <div class="rule-strength-list" id="ruleStrengthList"></div>
+                <button class="text-link-button" data-action="toggle-exceptions">例外・個別の作法を見る <span id="exceptionCount">0</span></button>
+              </section>
+            </div>
+          </details>
+
+          <details class="menu-group">
+            <summary>
+              <span class="menu-group-icon" aria-hidden="true">☷</span>
+              <span><strong>くわしい操作</strong><small>タグ・見え方・HTML</small></span>
+              <span class="menu-group-chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="menu-group-body">
+              <section class="tool-section tool-section--plain">
+                <header class="side-section-head compact"><div><p class="eyebrow">TAG</p><h2>タグを付ける</h2></div></header>
+                <p class="side-note">修正後で文字を選択してから使う。</p>
+                <div class="tag-grid">
+                  <button data-action="wrap-selection" data-tag="label">ラベル</button>
+                  <button data-action="wrap-selection" data-tag="heading">中見出し</button>
+                  <button data-action="wrap-selection" data-tag="note">注意</button>
+                  <button data-action="wrap-selection" data-tag="strong">強調</button>
+                  <button data-action="wrap-selection" data-tag="link">リンク</button>
+                </div>
+                <button class="side-row-button" data-action="open-pattern-tags"><span>パターンで一括タグ付け</span><b>→</b></button>
+                <button class="side-row-button subtle" data-action="open-transform" data-recipe="unwrap"><span>既存HTMLタグを外す</span><b>→</b></button>
+              </section>
+              <section class="tool-section tool-section--plain">
+                <header class="side-section-head compact"><div><p class="eyebrow">VIEW</p><h2>見え方を変える</h2></div></header>
+                <label class="side-check"><input type="checkbox" id="sideWhitespace" data-display-layer="whitespace" /><span>空白・改行を見える化</span></label>
+                <label class="side-check"><input type="checkbox" id="sideTags" data-display-layer="tags" /><span>HTMLタグを強調</span></label>
+                <label class="side-check"><input type="checkbox" id="sideUrls" data-display-layer="urls" /><span>URL・メールを強調</span></label>
+                <label class="side-check"><input type="checkbox" id="sidePendingOnly" data-display-layer="pendingOnly" /><span>未確認を優先表示</span></label>
+              </section>
+            </div>
+          </details>
+        </aside>
+        <section class="main-stage">
+
       <section class="desk-toolbar" aria-label="表示・編集操作">
         <div class="mode-switch" role="group" aria-label="表示モード">
           <button id="editModeButton" class="is-active" data-action="set-mode" data-mode="edit">原稿を編集</button>
           <button id="compareModeButton" data-action="set-mode" data-mode="compare">左右で比較</button>
         </div>
         <div class="toolbar-meta">
-          <span id="processingCount" class="processing-count">CMS加工 0件</span>
+          <span id="nextAction" class="next-action">まず、左右に原稿を貼ります</span><span id="processingCount" class="processing-count">CMS加工 0件</span>
           <button class="quiet-button" data-action="toggle-ghost" id="ghostButton" disabled>加工前を重ねて表示</button>
           <button class="quiet-button" data-action="toggle-display-settings">表示</button>
         </div>
@@ -65,8 +173,8 @@
           <article class="document-pane before-pane">
             <header class="pane-header">
               <div>
-                <p class="eyebrow">BASELINE</p>
-                <h1>比較元 <span>変更前</span></h1>
+                <p class="eyebrow">BEFORE</p>
+                <h1>変更前 <span>比較専用</span></h1>
               </div>
               <div class="pane-tools">
                 <button class="quiet-button" data-action="paste-baseline">貼り付け</button>
@@ -74,22 +182,36 @@
               </div>
             </header>
             <div class="pane-body">
-              <textarea id="baselineText" class="editor" spellcheck="false" placeholder="比較元の原稿を貼り付け"></textarea>
+              <textarea id="baselineText" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
+              <div id="baselineEmptyState" class="pane-empty-state" hidden>
+                <span class="empty-step">1</span>
+                <strong id="baselineEmptyTitle">変更前の原稿を貼る</strong>
+                <p id="baselineEmptyText">比較したい元の文章を、ここに貼り付けます。</p>
+                <div><button class="secondary-button" data-action="paste-baseline">貼り付け</button><button class="quiet-button" data-action="focus-baseline">ここに入力</button></div>
+              </div>
               <div id="baselineCompare" class="compare-surface" hidden></div>
             </div>
             <footer class="pane-footer"><span id="baselineStats">0文字・0行</span><span>比較専用</span></footer>
           </article>
 
           <section class="diff-gutter" aria-label="差分ガター">
-            <div class="gutter-head"><span>差分</span></div>
+            <div class="gutter-head"><button class="diff-legend-toggle" data-action="toggle-diff-legend" aria-controls="diffLegend" aria-expanded="false" title="差分の見方">?</button></div>
+            <div id="diffLegend" class="diff-legend" hidden>
+              <button class="diff-legend-close" data-action="close-diff-legend" aria-label="差分の見方を閉じる">×</button>
+              <strong>差分の見方</strong>
+              <p><i class="legend-before">赤い文字</i>：変更前にだけある表現</p>
+              <p><i class="legend-after">緑マーカー</i>：修正後に加わった表現</p>
+              <p><b>↔</b>：置換　<b>＋</b>：追加　<b>−</b>：削除</p>
+            </div>
+            <div id="compareStartHint" class="compare-start-hint" hidden>両方を入力すると、ここで差分を確認できます</div>
             <div id="gutterMap" class="gutter-map"></div>
           </section>
 
           <article class="document-pane after-pane">
             <header class="pane-header">
               <div>
-                <p class="eyebrow">CMS VERSION</p>
-                <h1>CMS作業版 <span>変更後</span></h1>
+                <p class="eyebrow">AFTER</p>
+                <h1>修正後 <span>CMS作業版として加工できます</span></h1>
               </div>
               <div class="pane-tools">
                 <button class="quiet-button" data-action="paste-working">貼り付け</button>
@@ -122,6 +244,12 @@
             </div>
             <div class="pane-body working-body">
               <textarea id="workingText" class="editor working-editor" spellcheck="false" placeholder="修正後の原稿を貼り付け。ここがCMS作業版として育ちます。"></textarea>
+              <div id="workingEmptyState" class="pane-empty-state pane-empty-state--after" hidden>
+                <span class="empty-step">2</span>
+                <strong id="workingEmptyTitle">修正後の原稿を貼る</strong>
+                <p id="workingEmptyText">比較する修正後の文章を、ここに貼り付けます。</p>
+                <div><button class="secondary-button" data-action="paste-working">貼り付け</button><button class="quiet-button" data-action="focus-working">ここに入力</button></div>
+              </div>
               <div id="afterCompare" class="compare-surface" hidden></div>
               <div id="selectionToolbar" class="selection-toolbar" hidden>
                 <button data-action="wrap-selection" data-tag="label">ラベル</button>
@@ -136,12 +264,13 @@
         </section>
 
         <aside class="review-rail" id="reviewRail" aria-label="確認キュー">
-          <button class="rail-summary" data-action="toggle-review-rail" aria-expanded="false">
+          <button class="rail-summary" data-action="toggle-review-rail" aria-expanded="false" aria-controls="reviewPanel">
             <span class="rail-label">確認</span>
-            <strong id="railTotal">0</strong>
-            <span id="railSub">入力待ち</span>
+            <strong id="railTotal">0件</strong>
+            <span id="railSub" class="rail-sub">入力待ち</span>
           </button>
           <div class="rail-dots" id="railDots"></div>
+          <div id="reviewRailHint" class="rail-hint" hidden>ここに確認が必要な項目が集まります<button data-action="close-rail-hint" aria-label="閉じる">×</button></div>
 
           <section class="review-panel" id="reviewPanel" hidden>
             <header class="review-panel-head">
@@ -161,6 +290,7 @@
       <section class="desk-footer" aria-label="補助機能">
         <button data-action="toggle-output-settings" id="outputSettingsButton">HTML・出力設定</button>
         <button data-action="toggle-history" id="historyButton">CMS加工履歴</button>
+        <button data-action="toggle-exceptions" id="exceptionsButton">例外一覧</button>
         <button data-action="open-audit">全体比較</button>
         <span class="shortcut-hint"><kbd>A</kbd> 判断　<kbd>S</kbd> 保留　<kbd>←</kbd><kbd>→</kbd> 移動</span>
       </section>
@@ -219,6 +349,15 @@
         </header>
         <div id="historyList" class="history-list"></div>
       </section>
+      <section id="exceptionsDrawer" class="bottom-drawer" hidden>
+        <header class="drawer-head">
+          <div><p class="eyebrow">EXCEPTIONS</p><h2>例外・個別の作法</h2><p>「今回は残す」ではなく、今後も維持したい表記をここで管理します。</p></div>
+          <button class="icon-button" data-action="toggle-exceptions" aria-label="閉じる">×</button>
+        </header>
+        <div id="exceptionList" class="exception-list"></div>
+      </section>
+        </section>
+      </div>
     </main>
   </div>
 
