@@ -4,123 +4,218 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#101d34" />
-  <meta name="description" content="ブラウザ内だけで動くテキスト差分・表記統一・HTML整形ツール" />
+  <meta name="description" content="ローカルで完結する、テキスト差分・表記統一・HTML整形ツール" />
   <link rel="icon" href="assets/app-icon.png" />
   <link rel="apple-touch-icon" href="assets/app-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="app.css" />
-  <title>Text Review Studio — v0.3.0</title>
+  <link rel="stylesheet" href="styles.css" />
+  <title>Text Review Studio — v0.4.0</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <a class="brand" href="#" data-action="go-home" aria-label="Text Review Studio ホーム">
+      <a class="brand" href="#" aria-label="Text Review Studio" data-action="scroll-top">
         <img src="assets/app-icon.png" alt="" class="brand-icon" />
         <span>
           <strong>Text Review Studio</strong>
-          <small>差分確認・表記統一・HTML整形</small>
+          <small>読みながら、必要な変更だけ判断する</small>
         </span>
       </a>
-      <div class="header-tools">
-        <span class="privacy-pill" title="入力テキストは外部APIに送信しません"><i></i>ローカル処理</span>
-        <button class="button button-quiet icon-only" data-action="undo" id="undoButton" disabled aria-label="元に戻す" title="元に戻す (Z)">↶</button>
-        <button class="button button-quiet icon-only" data-action="redo" id="redoButton" disabled aria-label="やり直す" title="やり直す">↷</button>
-        <button class="button button-quiet" data-action="open-help">使い方</button>
-        <button class="button button-quiet" data-action="load-sample">サンプル</button>
-        <button class="button button-quiet" data-action="open-settings">設定</button>
+
+      <div class="header-actions">
+        <span class="privacy-pill" title="入力内容は外部APIへ送信しません"><i></i>ローカル処理</span>
+        <button class="icon-button" id="undoButton" data-action="undo" title="判断を元に戻す" aria-label="判断を元に戻す" disabled>↶</button>
+        <button class="icon-button" id="redoButton" data-action="redo" title="やり直す" aria-label="やり直す" disabled>↷</button>
+        <div class="copy-wrap">
+          <button class="primary-button" id="copyMenuButton" data-action="toggle-copy-menu" aria-expanded="false">コピー <span>⌄</span></button>
+          <div class="copy-menu" id="copyMenu" hidden>
+            <p>コピーする内容</p>
+            <button data-action="copy" data-copy-type="plain"><span>タグなしテキスト</span><small>メール・SNS・下書き用</small></button>
+            <button data-action="copy" data-copy-type="html"><span>掲載用HTML</span><small>現在のタグ設定を反映</small></button>
+            <button data-action="copy" data-copy-type="report"><span>差分一覧</span><small>レビュー共有用</small></button>
+          </div>
+        </div>
+        <button class="icon-button" data-action="toggle-more" aria-label="その他の操作" title="その他の操作">⋯</button>
       </div>
     </header>
 
-    <main>
-      <section class="workspace-bar" aria-label="作業設定">
-        <div class="project-field"><span class="workspace-label">プロジェクト</span><input id="projectTitle" value="名称未設定の原稿" maxlength="80" aria-label="プロジェクト名" /></div>
-        <div class="workspace-meta"><span id="saveState" class="save-state">この端末に保存しない</span><button class="text-button" data-action="download-work">作業データを書き出す</button><button class="text-button" data-action="upload-work">読み込む</button><input id="workFile" type="file" accept="application/json" hidden /></div>
-      </section>
-      <section class="stepper" aria-label="作業ステップ">
-        <button class="step is-active" data-view="input"><span>1</span> 原稿入力 <small id="inputState">進行中</small></button>
-        <button class="step" data-view="manual"><span>2</span> 差分確認 <b id="manualCount">0</b><small id="manualState">未着手</small></button>
-        <button class="step" data-view="normalize"><span>3</span> 表記統一 <b id="normalizeCount">0</b><small id="normalizeState">未着手</small></button>
-        <button class="step" data-view="markup"><span>4</span> HTML整形 <b id="markupCount">0</b><small id="markupState">未着手</small></button>
-        <button class="step" data-view="export"><span>5</span> 出力 <small id="exportState">準備中</small></button>
+    <main class="workspace">
+      <section class="workspace-bar" aria-label="原稿設定">
+        <label class="project-title">
+          <span>原稿名</span>
+          <input id="projectTitle" maxlength="80" value="名称未設定の原稿" aria-label="原稿名" />
+        </label>
+        <div class="workspace-status">
+          <span id="analysisState">入力待ち</span>
+          <span class="dot">•</span>
+          <span id="saveHint">このブラウザ内で処理</span>
+        </div>
       </section>
 
-      <section id="view-input" class="view is-active" aria-labelledby="input-title">
-        <div class="view-heading">
-          <div>
-            <p class="eyebrow">START HERE</p>
-            <h1 id="input-title">まず、2つの原稿を置く</h1>
-            <p>修正前と修正後を貼り付けるだけ。内容はこのブラウザ内で比較・整形します。</p>
+      <section class="main-grid">
+        <article class="document-card" aria-labelledby="editorTitle">
+          <div class="card-head editor-head">
+            <div>
+              <p class="eyebrow">DOCUMENT</p>
+              <h1 id="editorTitle">原稿</h1>
+            </div>
+            <div class="editor-actions">
+              <button class="quiet-button" data-action="paste-working">貼り付け</button>
+              <button class="quiet-button danger" data-action="clear-working">消去</button>
+            </div>
           </div>
-          <div class="view-actions"><button class="button button-primary" data-action="go-manual">差分を確認する <span>→</span></button></div>
-        </div>
-        <div class="editor-grid">
-          <article class="panel editor-card">
-            <div class="panel-head"><div><span class="panel-label">変更前</span><h2>原文</h2></div><div class="mini-actions"><button class="text-button" data-action="paste-original">貼り付け</button><button class="text-button danger" data-action="clear-original">消去</button></div></div>
-            <textarea id="originalText" placeholder="修正前の原稿を貼り付け"></textarea>
-            <footer class="editor-meta" id="originalMeta">0文字 ・ 0行</footer>
-          </article>
-          <article class="panel editor-card">
-            <div class="panel-head"><div><span class="panel-label">変更後</span><h2>修正文</h2></div><div class="mini-actions"><button class="text-button" data-action="paste-revised">貼り付け</button><button class="text-button danger" data-action="clear-revised">消去</button></div></div>
-            <textarea id="revisedText" placeholder="修正後の原稿を貼り付け"></textarea>
-            <footer class="editor-meta" id="revisedMeta">0文字 ・ 0行</footer>
-          </article>
-        </div>
-        <aside class="summary-strip" id="inputSummary"></aside>
-        <section class="getting-started" id="gettingStarted">
-          <div><span class="getting-number">01</span><strong>原稿を貼る</strong><p>編集前・編集後を左右に入力します。</p></div>
-          <div><span class="getting-number">02</span><strong>変更を確認</strong><p>差分と表記候補を、1件ずつ判断します。</p></div>
-          <div><span class="getting-number">03</span><strong>そのまま出力</strong><p>テキスト、HTML、共有用レポートをコピーできます。</p></div>
-        </section>
+
+          <textarea id="workingText" class="main-editor" spellcheck="false" placeholder="ここに原稿を貼り付ける。&#10;&#10;右側に、確認が必要な差分・表記・タグ処理だけが出ます。"></textarea>
+
+          <div class="editor-meta">
+            <span id="workingStats">0文字・0行</span>
+            <span id="workingMeta">URL 0件・HTMLタグ 0件</span>
+          </div>
+
+          <section class="focus-card" id="focusCard" aria-live="polite">
+            <div class="focus-empty">
+              <strong>原稿を読んで、右側の候補を必要な分だけ確認。</strong>
+              <span>候補を選ぶと、ここに変更前後と文脈が出ます。</span>
+            </div>
+          </section>
+
+          <section class="baseline-panel" id="baselinePanel" hidden>
+            <div class="baseline-head">
+              <div>
+                <span class="panel-label">比較元</span>
+                <strong>原文</strong>
+                <small>入力すると、手動で直した差分も右側に加わります。</small>
+              </div>
+              <div>
+                <button class="quiet-button" data-action="paste-baseline">貼り付け</button>
+                <button class="quiet-button danger" data-action="remove-baseline">比較元を外す</button>
+              </div>
+            </div>
+            <textarea id="baselineText" class="baseline-editor" spellcheck="false" placeholder="修正前の原稿を貼り付け"></textarea>
+          </section>
+        </article>
+
+        <aside class="review-sidebar" aria-label="確認すること">
+          <div class="sidebar-head">
+            <div>
+              <p class="eyebrow">REVIEW QUEUE</p>
+              <h2>確認すること</h2>
+            </div>
+            <button class="quiet-button with-icon" data-action="toggle-tag-settings" aria-expanded="false" id="tagSettingsButton">タグの扱い <span>⌄</span></button>
+          </div>
+
+          <section class="tag-settings" id="tagSettings" hidden>
+            <div class="setting-row">
+              <div>
+                <strong>既存HTMLタグ</strong>
+                <small>原稿内にすでにあるHTMLタグを、掲載用HTMLでどう扱うか。</small>
+              </div>
+              <div class="segmented" role="group" aria-label="既存HTMLタグの扱い">
+                <button data-action="set-existing-tags" data-value="keep" class="is-active">保持</button>
+                <button data-action="set-existing-tags" data-value="strip">タグを外す</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>【ラベル】の初期方針</strong>
+                <small>個別の候補で上書きできます。</small>
+              </div>
+              <div class="segmented wrap" role="group" aria-label="ラベルの初期方針">
+                <button data-action="set-label-default" data-value="tag" class="is-active">タグにする</button>
+                <button data-action="set-label-default" data-value="plain">かっこを外す</button>
+                <button data-action="set-label-default" data-value="keep">そのまま</button>
+              </div>
+            </div>
+            <button class="subtle-button" data-action="apply-label-default">未確認のラベルに初期方針を適用</button>
+          </section>
+
+          <div class="review-summary" id="reviewSummary"></div>
+          <div class="filter-tabs" role="tablist" aria-label="候補の絞り込み">
+            <button class="is-active" data-action="set-filter" data-filter="pending">未確認</button>
+            <button data-action="set-filter" data-filter="critical">重要</button>
+            <button data-action="set-filter" data-filter="done">完了</button>
+            <button data-action="set-filter" data-filter="all">すべて</button>
+          </div>
+
+          <div class="candidate-list" id="candidateList"></div>
+          <section class="candidate-detail" id="candidateDetail"></section>
+        </aside>
       </section>
 
-      <section id="view-manual" class="view" aria-labelledby="manual-title">
-        <div class="view-heading"><div><p class="eyebrow">REVIEW</p><h1 id="manual-title">手動修正の差分確認</h1><p>原文と修正文の差分を確認済みにするだけで、原稿内容はここでは変更しません。</p></div><div class="view-actions"><button class="button button-quiet" data-view="input">原稿を編集</button><button class="button button-primary" data-view="normalize">表記統一へ <span>→</span></button></div></div>
-        <div class="review-layout">
-          <section class="panel compare-panel"><div class="compare-head"><span>変更前</span><span>変更後</span></div><div id="manualDiffView" class="diff-panes"></div></section>
-          <aside class="panel change-sidebar"><div class="panel-head"><div><span class="panel-label">変更一覧</span><h2>差分 <span id="manualProgress">0 / 0</span></h2></div><button class="text-button" data-action="toggle-manual-unreviewed">未確認のみ</button></div><div id="manualChangeList" class="change-list"></div><div class="change-nav"><button class="button button-quiet" data-action="manual-prev">← 前の変更</button><button class="button button-primary" data-action="manual-toggle-reviewed">確認済みにする</button><button class="button button-quiet" data-action="manual-next">次の変更 →</button></div></aside>
+      <section class="utility-bar" aria-label="補助機能">
+        <button data-action="toggle-baseline" id="baselineToggle">原文を追加して比較</button>
+        <button data-action="toggle-compare" id="compareToggle">原文と比較</button>
+        <button data-action="toggle-output" id="outputToggle">HTMLを確認</button>
+        <button data-action="open-audit">全体比較</button>
+        <span class="utility-hint">ショートカット：<kbd>A</kbd> 採用　<kbd>S</kbd> 除外　<kbd>←</kbd><kbd>→</kbd> 移動</span>
+      </section>
+
+      <section class="compare-drawer drawer" id="compareDrawer" hidden aria-labelledby="compareTitle">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">COMPARE</p>
+            <h2 id="compareTitle">原文と修正文</h2>
+            <p>差分は段落・行を先に比較し、変わった部分だけを細かく表示します。</p>
+          </div>
+          <button class="icon-button" data-action="toggle-compare" aria-label="閉じる">×</button>
+        </div>
+        <div class="compare-stats" id="compareStats"></div>
+        <div class="diff-grid">
+          <section class="diff-card"><header>変更前</header><div id="beforeDiff" class="diff-pane"></div></section>
+          <section class="diff-card"><header>変更後</header><div id="afterDiff" class="diff-pane"></div></section>
         </div>
       </section>
 
-      <section id="view-normalize" class="view" aria-labelledby="normalize-title">
-        <div class="view-heading"><div><p class="eyebrow">STANDARDIZE</p><h1 id="normalize-title">表記統一をレビュー</h1><p>候補を先に見せ、採用した変更だけを原稿へ反映します。</p></div><div class="view-actions"><button class="button button-quiet" data-action="apply-safe">安全な変更をすべて適用</button><button class="button button-primary" data-view="markup">HTML整形へ <span>→</span></button></div></div>
-        <div class="review-layout">
-          <section class="panel document-panel"><div class="panel-head"><div><span class="panel-label">現在の原稿</span><h2>表記統一後プレビュー</h2></div><span id="normalizeAppliedPill" class="status-pill">採用 0件</span></div><div id="normalizedPreview" class="document-preview"></div></section>
-          <aside class="panel change-sidebar"><div class="panel-head"><div><span class="panel-label">変更候補</span><h2>表記統一 <span id="normalizeProgress">0 / 0</span></h2></div><button class="text-button" data-action="toggle-normalize-pending">未確認のみ</button></div><div id="normalizeChangeList" class="change-list"></div><div id="normalizeDetail" class="change-detail"></div></aside>
+      <section class="output-drawer drawer" id="outputDrawer" hidden aria-labelledby="outputTitle">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">OUTPUT</p>
+            <h2 id="outputTitle">出力を確認</h2>
+            <p id="outputDescription">現在のタグ設定を反映した掲載用HTMLです。</p>
+          </div>
+          <button class="icon-button" data-action="toggle-output" aria-label="閉じる">×</button>
         </div>
-      </section>
-
-      <section id="view-markup" class="view" aria-labelledby="markup-title">
-        <div class="view-heading"><div><p class="eyebrow">FORMAT</p><h1 id="markup-title">掲載用HTMLを整形</h1><p>ラベル化する候補を確認し、HTMLコードと簡易プレビューを見比べます。</p></div><div class="view-actions"><button class="button button-quiet" data-action="apply-all-markup">すべてラベル化</button><button class="button button-primary" data-view="export">出力へ <span>→</span></button></div></div>
-        <div class="markup-grid">
-          <section class="panel"><div class="panel-head"><div><span class="panel-label">掲載用HTML</span><h2>コード</h2></div><button class="button button-secondary copy-btn" data-copy="html">HTMLをコピー</button></div><pre id="htmlCode" class="code-view"></pre></section>
-          <section class="panel"><div class="panel-head"><div><span class="panel-label">簡易プレビュー</span><h2>HTML構造プレビュー</h2></div><span class="status-pill neutral">本番再現ではありません</span></div><div id="htmlPreview" class="site-preview"></div></section>
+        <div class="output-tabs" role="tablist">
+          <button class="is-active" data-action="set-output-tab" data-output-tab="plain">タグなしテキスト</button>
+          <button data-action="set-output-tab" data-output-tab="html">掲載用HTML</button>
+          <button data-action="set-output-tab" data-output-tab="preview">構造プレビュー</button>
         </div>
-        <section class="panel markup-candidates"><div class="panel-head"><div><span class="panel-label">変換候補</span><h2>ラベル化 <span id="markupProgress">0 / 0</span></h2></div></div><div id="markupChangeList" class="markup-list"></div></section>
-      </section>
-
-      <section id="view-export" class="view" aria-labelledby="export-title">
-        <div class="view-heading"><div><p class="eyebrow">EXPORT</p><h1 id="export-title">出力・最終確認</h1><p>用途に合わせて、表記統一後テキストまたは掲載用HTMLをコピーします。</p></div><div class="view-actions"><button class="button button-quiet" data-view="audit">全体比較モード</button></div></div>
-        <div class="export-grid">
-          <article class="panel export-card"><span class="export-icon">T</span><h2>表記統一後テキスト</h2><p>プレーンテキストとしてCMSやメールへ貼り付ける場合。</p><button class="button button-primary copy-btn" data-copy="normalized">テキストをコピー</button></article>
-          <article class="panel export-card"><span class="export-icon">&lt;/&gt;</span><h2>掲載用HTML</h2><p>タグを含んだHTMLとして掲載システムへ貼り付ける場合。</p><button class="button button-primary copy-btn" data-copy="html">HTMLをコピー</button></article>
-          <article class="panel export-card"><span class="export-icon">≋</span><h2>差分一覧</h2><p>レビュー記録として変更内容を共有する場合。</p><button class="button button-primary copy-btn" data-copy="report">差分一覧をコピー</button></article>
-        </div>
-        <section class="panel export-checklist" id="exportChecklist"></section>
-        <section class="panel export-preview"><div class="panel-head"><div><span class="panel-label">最終状態</span><h2>表記統一後テキスト</h2></div><span id="exportSummary" class="status-pill"></span></div><pre id="finalText" class="final-text"></pre></section>
-      </section>
-
-      <section id="view-audit" class="view" aria-labelledby="audit-title">
-        <div class="view-heading"><div><p class="eyebrow">AUDIT</p><h1 id="audit-title">全体比較モード</h1><p>編集不可の最終確認用ビュー。4つの状態を横並びで確認します。</p></div><div class="view-actions"><button class="button button-primary" data-view="export">出力へ戻る</button></div></div>
-        <div id="auditGrid" class="audit-grid"></div>
+        <div class="output-panel" id="outputPanel"></div>
       </section>
     </main>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <dialog id="helpDialog"><div class="dialog-card help-dialog"><div class="dialog-title-row"><div><p class="eyebrow">QUICK GUIDE</p><h2>3分で使い始める</h2></div><button class="close-dialog" data-action="close-dialog" aria-label="閉じる">×</button></div><ol><li><strong>原稿入力</strong><span>修正前・修正後のテキストを貼り付けます。</span></li><li><strong>差分確認</strong><span>人が入れた変更を、確認済みにします。</span></li><li><strong>表記統一</strong><span>自動候補を採用または除外します。</span></li><li><strong>HTML整形</strong><span>【ラベル】を掲載用のHTMLに変換します。</span></li></ol><div class="shortcut-grid"><span><kbd>←</kbd><kbd>→</kbd> 前後の候補</span><span><kbd>A</kbd> 採用</span><span><kbd>S</kbd> 除外</span><span><kbd>Z</kbd> 元に戻す</span></div><div class="dialog-actions"><button class="button button-primary" data-action="close-dialog">はじめる</button></div></div></dialog>
-  <dialog id="settingsDialog"><div class="dialog-card"><div class="dialog-title-row"><div><p class="eyebrow">WORKSPACE</p><h2>作業データの設定</h2></div><button class="close-dialog" data-action="close-dialog" aria-label="閉じる">×</button></div><label class="setting-row"><span><strong>この端末に自動保存</strong><small>入力した原稿と判断結果を、このブラウザのローカル領域に保存します。</small></span><input id="autosaveToggle" type="checkbox" /></label><p class="settings-note">共有PCではOFF推奨。OFFの場合も、作業データをJSONで書き出して手元に保管できます。</p><div class="dialog-actions"><button class="button button-quiet" data-action="clear-local">端末の保存データを削除</button><button class="button button-primary" data-action="close-dialog">完了</button></div></div></dialog>
-  <dialog id="confirmEditDialog"><form method="dialog" class="dialog-card"><h2>派生した判断をリセットします</h2><p>修正文を編集すると、表記統一・HTML整形で行った採用／除外の判断を再計算します。</p><div class="dialog-actions"><button class="button button-quiet" value="cancel">キャンセル</button><button class="button button-danger" value="confirm">編集を続ける</button></div></form></dialog>
+  <dialog id="auditDialog" class="audit-dialog">
+    <div class="audit-card">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">FINAL REVIEW</p>
+          <h2>全体比較</h2>
+          <p>日常作業ではなく、最終確認用の監査ビューです。</p>
+        </div>
+        <button class="icon-button" data-action="close-audit" aria-label="閉じる">×</button>
+      </div>
+      <div id="auditGrid" class="audit-grid"></div>
+    </div>
+  </dialog>
 
+  <dialog id="moreDialog" class="more-dialog">
+    <div class="dialog-card">
+      <div class="drawer-head compact">
+        <div><p class="eyebrow">WORKSPACE</p><h2>その他の操作</h2></div>
+        <button class="icon-button" data-action="close-more" aria-label="閉じる">×</button>
+      </div>
+      <button class="menu-action" data-action="load-sample">サンプルを入れる<small>タグ・差分・表記候補を試す</small></button>
+      <button class="menu-action" data-action="download-work">作業データを書き出す<small>JSONでローカル保存</small></button>
+      <button class="menu-action" data-action="upload-work">作業データを読み込む<small>前に書き出したJSONを再開</small></button>
+      <input id="workFile" type="file" accept="application/json" hidden />
+      <button class="menu-action danger-action" data-action="clear-work">この画面の内容を消去<small>ブラウザ内の現在の作業をリセット</small></button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="diff-core.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
