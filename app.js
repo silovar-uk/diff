@@ -9,868 +9,1160 @@
 
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
+  const VERSION = 'v0.5.0';
+  const AUTO_SAVE_KEY = 'text-review-studio-v0.5.0';
 
-  const RULES = [
-    { id: 'safe-space', label: '連続する半角スペースを1つに統一', pattern: / {2,}/g, replacement: ' ', mode: 'auto', category: '空白・改行' },
-    { id: 'safe-trailing', label: '行末の空白を削除', pattern: /[ \t]+(?=\n|$)/g, replacement: '', mode: 'auto', category: '空白・改行' },
-    { id: 'style-paren-l', label: '全角の左かっこを半角に統一', pattern: /（/g, replacement: '(', mode: 'review', category: '記号' },
-    { id: 'style-paren-r', label: '全角の右かっこを半角に統一', pattern: /）/g, replacement: ')', mode: 'review', category: '記号' },
-    { id: 'style-exclamation', label: '全角感嘆符を半角に統一', pattern: /！/g, replacement: '!', mode: 'review', category: '記号' },
-    { id: 'style-nyudan', label: '入団を加入に統一', pattern: /入団/g, replacement: '加入', mode: 'review', category: '社内用語' },
-    { id: 'style-yoroshiku', label: '宜しくお願いしますをよろしくお願いしますに統一', pattern: /宜しくお願いします/g, replacement: 'よろしくお願いします', mode: 'review', category: '表記統一' },
-    { id: 'style-itashimasu', label: '致すをいたすに統一', pattern: /致す/g, replacement: 'いたす', mode: 'review', category: '表記統一' },
-    { id: 'style-arakajime', label: '予めをあらかじめに統一', pattern: /予め/g, replacement: 'あらかじめ', mode: 'review', category: '表記統一' },
-    { id: 'style-samazama', label: '様々をさまざまに統一', pattern: /様々/g, replacement: 'さまざま', mode: 'review', category: '表記統一' },
-    { id: 'style-seiippai', label: '精一杯を精いっぱいに統一', pattern: /精一杯/g, replacement: '精いっぱい', mode: 'review', category: '表記統一' },
-    { id: 'style-month', label: 'か月／ヶ月をヵ月に統一', pattern: /([0-9０-９]+)(か月|ヶ月)/g, replacement: '$1ヵ月', mode: 'review', category: '数字・単位' }
+  const STYLE_RULES = [
+    { id: 'fw-space', label: '全角スペースを半角スペースに統一', category: '空白', pattern: /　/g, replacement: ' ', severity: 'minor' },
+    { id: 'double-space', label: '連続する半角スペースを1つに統一', category: '空白', pattern: / {2,}/g, replacement: ' ', severity: 'minor' },
+    { id: 'trailing-space', label: '行末の空白を削除', category: '空白', pattern: /[ \t]+(?=\n|$)/g, replacement: '', severity: 'minor' },
+    { id: 'exclamation', label: '全角感嘆符を半角に統一', category: '記号', pattern: /！/g, replacement: '!', severity: 'minor' },
+    { id: 'question', label: '全角疑問符を半角に統一', category: '記号', pattern: /？/g, replacement: '?', severity: 'minor' },
+    { id: 'paren-left', label: '全角の左かっこを半角に統一', category: '記号', pattern: /（/g, replacement: '(', severity: 'minor' },
+    { id: 'paren-right', label: '全角の右かっこを半角に統一', category: '記号', pattern: /）/g, replacement: ')', severity: 'minor' },
+    { id: 'samazama', label: '様々をさまざまに統一', category: '表記', pattern: /様々/g, replacement: 'さまざま', severity: 'normal' },
+    { id: 'arakajime', label: '予めをあらかじめに統一', category: '表記', pattern: /予め/g, replacement: 'あらかじめ', severity: 'normal' },
+    { id: 'seiippai', label: '精一杯を精いっぱいに統一', category: '表記', pattern: /精一杯/g, replacement: '精いっぱい', severity: 'normal' },
+    { id: 'yoroshiku', label: '宜しくお願いしますをよろしくお願いしますに統一', category: '表記', pattern: /宜しくお願いします/g, replacement: 'よろしくお願いします', severity: 'normal' },
+    { id: 'nyudan', label: '入団を加入に統一', category: '社内用語', pattern: /入団/g, replacement: '加入', severity: 'normal' },
+    { id: 'month', label: 'か月／ヶ月をヵ月に統一', category: '数字・単位', pattern: /([0-9０-９]+)(か月|ヶ月)/g, replacement: '$1ヵ月', severity: 'normal' }
   ];
 
   const state = {
     title: '名称未設定の原稿',
-    working: '',
     baseline: '',
-    normDecisions: {},
-    labelDecisions: {},
-    manualReviews: {},
-    existingTagMode: 'keep',
-    labelDefault: 'tag',
-    filter: 'pending',
+    working: '',
+    mode: 'edit',
     activeId: null,
-    outputTab: 'plain',
+    railOpen: false,
+    reviews: {},
+    skipped: {},
+    output: {
+      tagPolicy: 'keep',
+      labelPolicy: 'tag',
+      linePolicy: 'keep',
+      linkPolicy: 'raw'
+    },
+    display: {
+      whitespace: false,
+      tags: false,
+      urls: false,
+      pendingOnly: false
+    },
+    search: { open: false, query: '', current: 0, replaceOpen: false },
+    showGhost: false,
+    lastTransform: null,
+    cmsHistory: [],
+    undoStack: [],
+    redoStack: [],
     derived: null,
-    analyzing: false,
+    pendingTransform: null,
+    pendingCopy: null,
     debounceTimer: null,
-    history: [],
-    future: []
+    analyzing: false
   };
 
-  const escapeHTML = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[char]));
+  function escapeHTML(value = '') {
+    return String(value).replace(/[&<>'"]/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[char]));
+  }
 
-  const truncate = (value = '', max = 34) => {
+  function escapeRegExp(value = '') {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function truncate(value = '', length = 46) {
     const text = String(value).replace(/\n/g, '↵');
-    return text.length > max ? `${text.slice(0, max - 1)}…` : text || '（なし）';
-  };
+    return text.length > length ? `${text.slice(0, length - 1)}…` : text || '（なし）';
+  }
 
-  const cleanContext = (text = '') => text.replace(/\n/g, '\n');
-
-  function textStats(text) {
-    const source = String(text || '');
+  function stats(text) {
+    const value = String(text || '');
     return {
-      chars: [...source].length,
-      lines: source ? source.split('\n').length : 0,
-      urls: (source.match(/https?:\/\/[^\s<]+/g) || []).length,
-      tags: (source.match(/<[^>]*>/g) || []).length
+      chars: [...value].length,
+      lines: value ? value.split('\n').length : 0,
+      urls: (value.match(/https?:\/\/[^\s<]+/g) || []).length,
+      tags: (value.match(/<[^>]*>/g) || []).length
     };
+  }
+
+  function nowLabel() {
+    return new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function signature(...items) {
+    return items.map(item => encodeURIComponent(String(item))).join('|');
   }
 
   function protectedRanges(text) {
     const ranges = [];
     const pattern = /https?:\/\/[^\s<]+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|<[^>]*>/g;
     let match;
-    while ((match = pattern.exec(text))) {
-      ranges.push([match.index, match.index + match[0].length]);
-    }
+    while ((match = pattern.exec(text))) ranges.push({ start: match.index, end: match.index + match[0].length, type: match[0].startsWith('<') ? 'tag' : match[0].includes('@') ? 'email' : 'url' });
     return ranges;
   }
 
-  function overlaps(start, end, ranges) {
-    return ranges.some(([rangeStart, rangeEnd]) => start < rangeEnd && end > rangeStart);
+  function isProtected(start, end, ranges) {
+    return ranges.some(range => start < range.end && end > range.start);
   }
 
-  function rangeContext(text, start, end, radius = 52) {
-    return String(text).slice(Math.max(0, start - radius), Math.min(text.length, end + radius));
+  function contextAt(text, start, end, radius = 58) {
+    return String(text).slice(Math.max(0, start - radius), Math.min(String(text).length, end + radius));
   }
 
-  function classifyTextSeverity(before, after) {
-    const combined = `${before}${after}`;
-    if (/(https?:\/\/|www\.|@[\w.-]+\.|<\/?[A-Za-z][^>]*>|[0-9０-９]+\s*(年|月|日|時|分|円|%|％))/i.test(combined)) return 'critical';
-    if (/^[\s\n\r\t、。,.!！?？()（）\[\]【】「」『』]+$/u.test(combined)) return 'minor';
+  function classifySeverity(before, after) {
+    const all = `${before}${after}`;
+    if (/(https?:\/\/|www\.|@[\w.-]+\.|<\/?[A-Za-z][^>]*>|[0-9０-９]+\s*(年|月|日|時|分|円|%|％)|\b(?:AM|PM)\b)/i.test(all)) return 'critical';
+    if (/^[\s\n\r\t、。,.!！?？()（）\[\]【】「」『』]+$/u.test(all)) return 'minor';
     return 'normal';
   }
 
-  function candidateId(kind, ...parts) {
-    return `${kind}:${parts.map(value => encodeURIComponent(String(value))).join(':')}`;
-  }
-
-  function makeNormalizationCandidates(text) {
-    const candidates = [];
+  function makeStyleCandidates(text) {
+    const output = [];
     const protectedAreas = protectedRanges(text);
-
-    for (const rule of RULES) {
-      const scan = new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`);
-      const replaceOne = new RegExp(rule.pattern.source, rule.pattern.flags.replace('g', ''));
+    for (const rule of STYLE_RULES) {
+      const scanner = new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`);
+      const one = new RegExp(rule.pattern.source, rule.pattern.flags.replace('g', ''));
       let match;
-      let occurrence = 0;
-
-      while ((match = scan.exec(text))) {
-        if (!match[0]) {
-          scan.lastIndex += 1;
-          continue;
-        }
+      while ((match = scanner.exec(text))) {
+        if (!match[0]) { scanner.lastIndex += 1; continue; }
+        if (isProtected(match.index, match.index + match[0].length, protectedAreas)) continue;
         const before = match[0];
-        const after = before.replace(replaceOne, rule.replacement);
-        if (!overlaps(match.index, match.index + before.length, protectedAreas)) {
-          const id = candidateId('norm', rule.id, match.index, before, after, occurrence);
-          candidates.push({
-            id,
-            type: 'normalize',
-            ruleId: rule.id,
-            category: rule.category,
-            label: rule.label,
-            mode: rule.mode,
-            before,
-            after,
-            start: match.index,
-            end: match.index + before.length,
-            severity: classifyTextSeverity(before, after),
-            context: rangeContext(text, match.index, match.index + before.length)
-          });
-        }
-        occurrence += 1;
-      }
-    }
-    return candidates;
-  }
-
-  function applyAcceptedNormalizations(text, candidates) {
-    let output = String(text);
-    const accepted = candidates
-      .filter(candidate => (state.normDecisions[candidate.id] || (candidate.mode === 'auto' ? 'accepted' : 'pending')) === 'accepted')
-      .sort((a, b) => b.start - a.start);
-
-    for (const candidate of accepted) {
-      if (output.slice(candidate.start, candidate.end) === candidate.before) {
-        output = `${output.slice(0, candidate.start)}${candidate.after}${output.slice(candidate.end)}`;
+        const after = before.replace(one, rule.replacement);
+        const id = `style:${signature(rule.id, match.index, before, after)}`;
+        output.push({
+          id, type: 'style', category: rule.category, label: rule.label,
+          before, after, start: match.index, end: match.index + before.length,
+          severity: rule.severity || classifySeverity(before, after),
+          context: contextAt(text, match.index, match.index + before.length),
+          skipKey: signature('style', rule.id, before, after, contextAt(text, match.index, match.index + before.length, 22))
+        });
       }
     }
     return output;
   }
 
   function makeLabelCandidates(text) {
-    const candidates = [];
+    const output = [];
     let offset = 0;
-    const lines = String(text).split('\n');
-
-    lines.forEach((line, index) => {
+    text.split('\n').forEach((line, index) => {
       const match = line.match(/^([ \t]*)【([^\n】]{1,40})】([ \t]*)$/);
-      if (match) {
-        const before = line;
-        const id = candidateId('label', index, offset, before, match[2]);
-        candidates.push({
-          id,
-          type: 'label',
-          category: 'HTMLラベル',
-          label: '【ラベル】の扱い',
-          before,
-          after: `<span class="info24-label">${escapeHTML(match[2])}</span>`,
-          line: index + 1,
-          start: offset,
-          end: offset + line.length,
-          leading: match[1],
-          value: match[2],
-          trailing: match[3],
-          severity: 'normal',
-          context: `${index + 1}行目：${line}`
-        });
-      }
+      if (!match) { offset += line.length + 1; return; }
+      const before = line;
+      const value = match[2];
+      const id = `label:${signature(index, offset, before)}`;
+      output.push({
+        id, type: 'label', category: 'HTML', label: '【ラベル】の扱い',
+        before, after: `<span class="info24-label">${escapeHTML(value)}</span>`,
+        start: offset, end: offset + line.length, line: index + 1,
+        leading: match[1], value, trailing: match[3], severity: 'normal',
+        context: `${index + 1}行目：${line}`,
+        skipKey: signature('label', before, index)
+      });
       offset += line.length + 1;
     });
-    return candidates;
+    return output;
   }
 
-  function effectiveLabelAction(candidate) {
-    return state.labelDecisions[candidate.id] || state.labelDefault;
-  }
-
-  function applyLabels(text, candidates, outputKind) {
-    let output = String(text);
-    const sorted = [...candidates].sort((a, b) => b.start - a.start);
-
-    for (const candidate of sorted) {
-      let action = effectiveLabelAction(candidate);
-      if (outputKind === 'plain' && action === 'tag') action = 'plain';
-
-      if (output.slice(candidate.start, candidate.end) !== candidate.before) continue;
-      let replacement = candidate.before;
-      if (action === 'tag') replacement = `${candidate.leading}<span class="info24-label">${escapeHTML(candidate.value)}</span>${candidate.trailing}`;
-      if (action === 'plain') replacement = `${candidate.leading}${candidate.value}${candidate.trailing}`;
-      output = `${output.slice(0, candidate.start)}${replacement}${output.slice(candidate.end)}`;
+  function makeEditorialCandidates(text) {
+    const output = [];
+    const datePattern = /(?<!\d)(\d{1,2})\/(\d{1,2})\((日|月|火|水|木|金|土)\)/g;
+    let match;
+    while ((match = datePattern.exec(text))) {
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      const weekday = match[3];
+      const year = new Date().getFullYear();
+      const expected = '日月火水木金土'[new Date(year, month - 1, day).getDay()];
+      const note = expected === weekday ? '曜日の整合を確認してください' : `曜日が一致しない可能性：${weekday} → ${expected}`;
+      const id = `editorial:${signature(match.index, match[0], expected)}`;
+      output.push({
+        id, type: 'editorial', category: '校閲', label: note,
+        before: match[0], after: match[0], start: match.index, end: match.index + match[0].length,
+        severity: expected === weekday ? 'normal' : 'critical', context: contextAt(text, match.index, match.index + match[0].length),
+        skipKey: signature('editorial', match[0], match.index)
+      });
     }
     return output;
   }
 
-  function stripExistingTagsKeepingGenerated(text) {
-    const placeholders = [];
-    const held = String(text).replace(/<span class="info24-label">[\s\S]*?<\/span>/g, (match) => {
-      const marker = `___TRS_GENERATED_LABEL_${placeholders.length}___`;
-      placeholders.push(match);
-      return marker;
-    });
-    let stripped = held.replace(/<[^>]*>/g, '');
-    placeholders.forEach((value, index) => {
-      stripped = stripped.replace(`___TRS_GENERATED_LABEL_${index}___`, value);
-    });
-    return stripped;
-  }
-
-  function safePreviewHTML(html) {
-    let safe = escapeHTML(html);
-    safe = safe.replace(
-      /&lt;span class=&quot;info24-label&quot;&gt;([\s\S]*?)&lt;\/span&gt;/g,
-      '<span class="info24-label">$1</span>'
-    );
-    return safe.replace(/\n/g, '<br>');
-  }
-
-  function derive() {
-    const manualDiff = state.baseline
-      ? Diff.diffText(state.baseline, state.working)
-      : { parts: [], hunks: [] };
-
-    const normalizationCandidates = makeNormalizationCandidates(state.working);
-    const normalizedText = applyAcceptedNormalizations(state.working, normalizationCandidates);
-    const labelCandidates = makeLabelCandidates(normalizedText);
-    const labelledForHtml = applyLabels(normalizedText, labelCandidates, 'html');
-    const htmlOutput = state.existingTagMode === 'strip'
-      ? stripExistingTagsKeepingGenerated(labelledForHtml)
-      : labelledForHtml;
-    const plainOutput = applyLabels(normalizedText, labelCandidates, 'plain').replace(/<[^>]*>/g, '');
-
-    const manualCandidates = manualDiff.hunks.map((hunk, index) => ({
+  function makeManualCandidates() {
+    if (!state.baseline || !state.working) return [];
+    const diff = Diff.diffText(state.baseline, state.working);
+    return diff.hunks.map((hunk, index) => ({
       id: `manual:${hunk.id}`,
       sourceId: hunk.id,
-      type: 'manual',
-      category: '手動修正',
-      label: '原文と修正文の差分',
-      order: index + 1,
-      before: hunk.before,
-      after: hunk.after,
-      start: hunk.afterStart,
-      end: hunk.afterEnd,
-      severity: hunk.severity,
-      context: rangeContext(state.working, hunk.afterStart, hunk.afterEnd || hunk.afterStart)
+      type: 'manual', category: '差分', label: '人が修正した変更',
+      before: hunk.before, after: hunk.after,
+      start: hunk.afterStart, end: hunk.afterEnd,
+      severity: hunk.severity, order: index + 1,
+      context: contextAt(state.working, hunk.afterStart, hunk.afterEnd || hunk.afterStart),
+      skipKey: signature('manual', hunk.before, hunk.after, hunk.afterStart)
     }));
-
-    return {
-      manualDiff,
-      normalizationCandidates,
-      normalizedText,
-      labelCandidates,
-      htmlOutput,
-      plainOutput,
-      manualCandidates
-    };
   }
 
   function candidateStatus(candidate) {
-    if (candidate.type === 'manual') return state.manualReviews[candidate.sourceId] === 'reviewed' ? 'done' : 'pending';
-    if (candidate.type === 'normalize') {
-      const decision = state.normDecisions[candidate.id] || (candidate.mode === 'auto' ? 'accepted' : 'pending');
-      return decision === 'pending' ? 'pending' : 'done';
-    }
-    if (candidate.type === 'label') return state.labelDecisions[candidate.id] ? 'done' : 'pending';
+    const explicit = state.reviews[candidate.id];
+    if (explicit === 'done') return 'done';
+    if (state.skipped[candidate.skipKey]) return 'skipped';
     return 'pending';
   }
 
-  function candidateStatusText(candidate) {
-    if (candidate.type === 'manual') return candidateStatus(candidate) === 'done' ? '確認済み' : '未確認';
-    if (candidate.type === 'normalize') {
-      const decision = state.normDecisions[candidate.id] || (candidate.mode === 'auto' ? 'accepted' : 'pending');
-      if (decision === 'accepted') return candidate.mode === 'auto' ? '自動適用' : '採用';
-      if (decision === 'skipped') return '除外';
-      return '未確認';
-    }
-    if (candidate.type === 'label') {
-      const decision = state.labelDecisions[candidate.id];
-      if (decision === 'tag') return 'タグ化';
-      if (decision === 'plain') return 'かっこなし';
-      if (decision === 'keep') return 'そのまま';
-      return '未確認';
-    }
-    return '';
-  }
-
-  function allCandidates() {
-    const raw = [
-      ...(state.derived?.manualCandidates || []),
-      ...(state.derived?.normalizationCandidates || []),
-      ...(state.derived?.labelCandidates || [])
-    ];
-    const severityRank = { critical: 0, normal: 1, minor: 2 };
-    const typeRank = { manual: 0, normalize: 1, label: 2 };
-    return raw.sort((a, b) => {
-      const severityDiff = severityRank[a.severity] - severityRank[b.severity];
-      if (severityDiff) return severityDiff;
-      const statusDiff = (candidateStatus(a) === 'pending' ? 0 : 1) - (candidateStatus(b) === 'pending' ? 0 : 1);
-      if (statusDiff) return statusDiff;
-      return typeRank[a.type] - typeRank[b.type];
+  function candidates() {
+    const manual = makeManualCandidates();
+    const style = makeStyleCandidates(state.working);
+    const label = makeLabelCandidates(state.working);
+    const editorial = makeEditorialCandidates(state.working);
+    const rankSeverity = { critical: 0, normal: 1, minor: 2 };
+    const rankType = { editorial: 0, manual: 1, style: 2, label: 3 };
+    return [...editorial, ...manual, ...style, ...label].sort((a, b) => {
+      const statusRank = candidateStatus(a) === 'pending' ? 0 : 1;
+      const otherStatusRank = candidateStatus(b) === 'pending' ? 0 : 1;
+      if (statusRank !== otherStatusRank) return statusRank - otherStatusRank;
+      if (rankSeverity[a.severity] !== rankSeverity[b.severity]) return rankSeverity[a.severity] - rankSeverity[b.severity];
+      return rankType[a.type] - rankType[b.type];
     });
   }
 
-  function getCandidate(id) {
-    return allCandidates().find(candidate => candidate.id === id) || null;
+  function derive() {
+    const list = candidates();
+    const manualDiff = state.baseline && state.working ? Diff.diffText(state.baseline, state.working) : { parts: [], hunks: [] };
+    const pending = list.filter(item => candidateStatus(item) === 'pending');
+    return { list, manualDiff, pending, critical: pending.filter(item => item.severity === 'critical'), done: list.filter(item => candidateStatus(item) !== 'pending') };
   }
 
-  function filterCandidates(candidates) {
-    if (state.filter === 'all') return candidates;
-    if (state.filter === 'critical') return candidates.filter(candidate => candidate.severity === 'critical');
-    if (state.filter === 'done') return candidates.filter(candidate => candidateStatus(candidate) === 'done');
-    return candidates.filter(candidate => candidateStatus(candidate) === 'pending');
+  function ensureActive() {
+    if (!state.derived.list.length) { state.activeId = null; return; }
+    if (!state.derived.list.some(item => item.id === state.activeId)) state.activeId = state.derived.pending[0]?.id || state.derived.list[0].id;
   }
 
-  function ensureActiveCandidate() {
-    const candidates = allCandidates();
-    if (!candidates.length) {
-      state.activeId = null;
-      return;
-    }
-    if (!candidates.some(candidate => candidate.id === state.activeId)) {
-      state.activeId = candidates.find(candidate => candidateStatus(candidate) === 'pending')?.id || candidates[0].id;
-    }
+  function activeCandidate() {
+    return state.derived?.list.find(item => item.id === state.activeId) || null;
   }
 
   function snapshot() {
     return JSON.stringify({
-      normDecisions: state.normDecisions,
-      labelDecisions: state.labelDecisions,
-      manualReviews: state.manualReviews,
-      existingTagMode: state.existingTagMode,
-      labelDefault: state.labelDefault
+      title: state.title, baseline: state.baseline, working: state.working,
+      mode: state.mode, activeId: state.activeId, reviews: state.reviews, skipped: state.skipped,
+      output: state.output, display: state.display, cmsHistory: state.cmsHistory, lastTransform: state.lastTransform
     });
   }
 
-  function commitHistory() {
-    state.history.push(snapshot());
-    if (state.history.length > 60) state.history.shift();
-    state.future = [];
+  function pushUndo() {
+    state.undoStack.push(snapshot());
+    if (state.undoStack.length > 80) state.undoStack.shift();
+    state.redoStack = [];
   }
 
-  function restoreSnapshot(json) {
-    const restored = JSON.parse(json);
-    state.normDecisions = restored.normDecisions || {};
-    state.labelDecisions = restored.labelDecisions || {};
-    state.manualReviews = restored.manualReviews || {};
-    state.existingTagMode = restored.existingTagMode || 'keep';
-    state.labelDefault = restored.labelDefault || 'tag';
+  function restoreSnapshot(raw) {
+    const data = JSON.parse(raw);
+    state.title = data.title || '名称未設定の原稿';
+    state.baseline = data.baseline || '';
+    state.working = data.working || '';
+    state.mode = data.mode || 'edit';
+    state.activeId = data.activeId || null;
+    state.reviews = data.reviews || {};
+    state.skipped = data.skipped || {};
+    state.output = { ...state.output, ...(data.output || {}) };
+    state.display = { ...state.display, ...(data.display || {}) };
+    state.cmsHistory = data.cmsHistory || [];
+    state.lastTransform = data.lastTransform || null;
+    $('#projectTitle').value = state.title;
+    $('#baselineText').value = state.baseline;
+    $('#workingText').value = state.working;
   }
 
   function undo() {
-    if (!state.history.length) return;
-    state.future.push(snapshot());
-    restoreSnapshot(state.history.pop());
+    if (!state.undoStack.length) return;
+    state.redoStack.push(snapshot());
+    restoreSnapshot(state.undoStack.pop());
     renderAll();
-    notify('直前の判断を元に戻しました');
+    notify('直前の操作を元に戻しました');
   }
 
   function redo() {
-    if (!state.future.length) return;
-    state.history.push(snapshot());
-    restoreSnapshot(state.future.pop());
+    if (!state.redoStack.length) return;
+    state.undoStack.push(snapshot());
+    restoreSnapshot(state.redoStack.pop());
     renderAll();
     notify('やり直しました');
   }
 
-  function renderMeta() {
-    const stats = textStats(state.working);
-    $('#workingStats').textContent = `${stats.chars.toLocaleString()}文字・${stats.lines.toLocaleString()}行`;
-    $('#workingMeta').textContent = `URL ${stats.urls}件・HTMLタグ ${stats.tags}件`;
-    $('#analysisState').textContent = state.analyzing
-      ? '確認内容を更新中…'
-      : state.working ? '確認内容は最新' : '入力待ち';
+  function commitWorking(nextText, description, count = 1, detail = '') {
+    const next = String(nextText);
+    if (next === state.working) { notify('変更対象はありません'); return false; }
+    pushUndo();
+    const before = state.working;
+    state.working = next;
+    state.lastTransform = { before, after: next, description, count };
+    state.cmsHistory.unshift({ id: `${Date.now()}-${Math.random()}`, at: nowLabel(), description, count, detail, before, after: next });
+    state.manualReviews = {};
+    $('#workingText').value = state.working;
+    renderAll();
+    notify(`${description}：${count}件を反映しました`);
+    return true;
   }
 
-  function renderTagSettings() {
-    $$('#tagSettings [data-action="set-existing-tags"]').forEach(button => {
-      button.classList.toggle('is-active', button.dataset.value === state.existingTagMode);
+  function tokeniseProtected(text, options = {}) {
+    const tokens = [];
+    const protectPattern = options.protect === false ? /$^/g : /https?:\/\/[^\s<]+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|<[^>]*>/g;
+    const safe = String(text).replace(protectPattern, match => {
+      const marker = `\uE000TRS${tokens.length}\uE001`;
+      tokens.push(match);
+      return marker;
     });
-    $$('#tagSettings [data-action="set-label-default"]').forEach(button => {
-      button.classList.toggle('is-active', button.dataset.value === state.labelDefault);
+    return { safe, restore(value) { return tokens.reduce((out, token, index) => out.replaceAll(`\uE000TRS${index}\uE001`, token), value); }, protectedCount: tokens.length };
+  }
+
+  function runRecipe(recipe, source = state.working) {
+    const sourceText = String(source);
+    let count = 0;
+    let protectedCount = 0;
+    let output = sourceText;
+    let description = '';
+    let detail = '';
+
+    const replaceProtected = (transform, protect = true) => {
+      const tokenized = tokeniseProtected(output, { protect });
+      protectedCount += tokenized.protectedCount;
+      const result = transform(tokenized.safe, (pattern, replacement) => {
+        const matches = tokenized.safe.match(pattern);
+        count += matches ? matches.length : 0;
+        return tokenized.safe.replace(pattern, replacement);
+      });
+      output = tokenized.restore(result);
+    };
+
+    if (recipe === 'space') {
+      description = '空白を整える';
+      replaceProtected((text, replace) => {
+        let value = replace(/　/g, ' ');
+        value = value.replace(/ {2,}/g, match => { count += 1; return ' '; });
+        value = value.replace(/[ \t]+(?=\n|$)/g, match => { count += 1; return ''; });
+        return value;
+      });
+      detail = '全角スペース・連続半角スペース・行末空白';
+    }
+
+    if (recipe === 'symbol') {
+      description = '記号を統一する';
+      replaceProtected((text) => {
+        const map = [['！', '!'], ['？', '?'], ['（', '('], ['）', ')'], ['＆', '&'], ['：', ':'], ['／', '/'], ['〜', '～']];
+        let value = text;
+        map.forEach(([before, after]) => {
+          const re = new RegExp(escapeRegExp(before), 'g');
+          const matches = value.match(re);
+          count += matches ? matches.length : 0;
+          value = value.replace(re, after);
+        });
+        return value;
+      });
+      detail = '！・？・かっこ・記号';
+    }
+
+    if (recipe === 'notation') {
+      description = '表記をそろえる';
+      replaceProtected((text) => {
+        const rules = STYLE_RULES.filter(rule => ['samazama', 'arakajime', 'seiippai', 'yoroshiku', 'nyudan', 'month'].includes(rule.id));
+        let value = text;
+        rules.forEach(rule => {
+          const matches = value.match(rule.pattern);
+          count += matches ? matches.length : 0;
+          value = value.replace(rule.pattern, rule.replacement);
+        });
+        return value;
+      });
+      detail = '様々・予め・精一杯など';
+    }
+
+    if (recipe === 'newline') {
+      description = '改行を整える';
+      replaceProtected((text) => {
+        let value = text.replace(/\r\n?/g, '\n');
+        const matches = value.match(/\n{3,}/g);
+        count += matches ? matches.length : 0;
+        value = value.replace(/\n{3,}/g, '\n\n');
+        return value;
+      });
+      detail = '改行コード・空行の連続';
+    }
+
+    if (recipe === 'unwrap') {
+      description = 'HTMLタグを外す';
+      const matches = output.match(/<[^>]*>/g);
+      count = matches ? matches.length : 0;
+      output = output.replace(/<[^>]*>/g, '');
+      detail = 'タグだけを削除し、中の文字は残す';
+    }
+
+    return { recipe, description, detail, before: sourceText, after: output, count, protectedCount };
+  }
+
+  function patternTransform(kind) {
+    const before = state.working;
+    let after = before;
+    let count = 0;
+    let description = '';
+    let detail = '';
+
+    if (kind === 'brackets') {
+      description = '【】をラベル化';
+      after = before.replace(/^([ \t]*)【([^\n】]{1,40})】([ \t]*)$/gm, (match, leading, value, trailing) => {
+        count += 1;
+        return `${leading}<span class="info24-label">${escapeHTML(value)}</span>${trailing}`;
+      });
+      detail = '40文字以下・行全体が【】の対象のみ';
+    }
+
+    if (kind === 'urls') {
+      description = 'URLをリンク化';
+      const tokenized = tokeniseProtected(before, { protect: true });
+      // URLs are protected by default, so re-run while preserving tags only.
+      const tags = [];
+      const safe = before.replace(/<[^>]*>/g, tag => { const marker = `\uE010TAG${tags.length}\uE011`; tags.push(tag); return marker; });
+      const linked = safe.replace(/https?:\/\/[^\s<]+/g, url => {
+        if (/^\uE010TAG/.test(url)) return url;
+        count += 1;
+        return `<a href="${escapeHTML(url)}">${escapeHTML(url)}</a>`;
+      });
+      after = tags.reduce((out, tag, index) => out.replaceAll(`\uE010TAG${index}\uE011`, tag), linked);
+      detail = '既存HTMLタグの外にあるURLのみ';
+      void tokenized;
+    }
+
+    if (kind === 'notes') {
+      description = '※注記を注意書きタグ化';
+      after = before.replace(/^([ \t]*)(※[^\n]+)$/gm, (match, leading, value) => {
+        count += 1;
+        return `${leading}<span class="info24-note">${escapeHTML(value)}</span>`;
+      });
+      detail = '行頭の※から始まる行';
+    }
+    return { recipe: `pattern:${kind}`, description, detail, before, after, count, protectedCount: 0 };
+  }
+
+  function replaceAt(text, start, end, value) {
+    return `${text.slice(0, start)}${value}${text.slice(end)}`;
+  }
+
+  function wrapSelection(tag) {
+    if (state.mode !== 'edit') { notify('タグ付けは「原稿を編集」で行えます'); return; }
+    const editor = $('#workingText');
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const selected = state.working.slice(start, end);
+    if (!selected) { notify('タグを付ける文字を選択してください'); return; }
+    let replacement = selected;
+    let description = '';
+    if (tag === 'label') { replacement = `<span class="info24-label">${escapeHTML(selected)}</span>`; description = '選択範囲をラベル化'; }
+    if (tag === 'heading') { replacement = `<span class="info24-t2">${escapeHTML(selected)}</span>`; description = '選択範囲を中見出し化'; }
+    if (tag === 'note') { replacement = `<span class="info24-note">${escapeHTML(selected)}</span>`; description = '選択範囲を注意書き化'; }
+    if (tag === 'strong') { replacement = `<strong>${escapeHTML(selected)}</strong>`; description = '選択範囲を強調'; }
+    if (tag === 'link') {
+      const url = window.prompt('リンク先URLを入力してください');
+      if (!url) return;
+      replacement = `<a href="${escapeHTML(url)}">${escapeHTML(selected)}</a>`;
+      description = '選択範囲にリンクを付与';
+    }
+    const next = replaceAt(state.working, start, end, replacement);
+    if (commitWorking(next, description, 1, selected)) {
+      state.mode = 'edit';
+      setTimeout(() => {
+        const field = $('#workingText');
+        field.focus();
+        field.setSelectionRange(start, start + replacement.length);
+      }, 0);
+    }
+    hideSelectionToolbar();
+  }
+
+  function stripTagsKeepGenerated(text) {
+    const held = [];
+    const safe = String(text).replace(/<span class="info24-label">[\s\S]*?<\/span>/g, match => {
+      const marker = `\uE100LABEL${held.length}\uE101`;
+      held.push(match);
+      return marker;
+    });
+    const stripped = safe.replace(/<[^>]*>/g, '');
+    return held.reduce((out, value, index) => out.replaceAll(`\uE100LABEL${index}\uE101`, value), stripped);
+  }
+
+  function convertLabelsForOutput(text, policy) {
+    if (policy === 'keep') return text;
+    return String(text).replace(/^([ \t]*)【([^\n】]{1,40})】([ \t]*)$/gm, (match, leading, value, trailing) => {
+      if (policy === 'tag') return `${leading}<span class="info24-label">${escapeHTML(value)}</span>${trailing}`;
+      return `${leading}${value}${trailing}`;
     });
   }
 
-  function renderSummary() {
-    const candidates = allCandidates();
-    const critical = candidates.filter(candidate => candidate.severity === 'critical' && candidateStatus(candidate) === 'pending').length;
-    const pending = candidates.filter(candidate => candidateStatus(candidate) === 'pending').length;
-    const done = candidates.filter(candidate => candidateStatus(candidate) === 'done').length;
-    $('#reviewSummary').innerHTML = `
-      <div class="summary-tile critical"><strong>${critical}</strong><span>重要</span></div>
-      <div class="summary-tile pending"><strong>${pending}</strong><span>未確認</span></div>
-      <div class="summary-tile done"><strong>${done}</strong><span>完了</span></div>
-    `;
+  function linkifyOutput(text) {
+    const tags = [];
+    const safe = String(text).replace(/<[^>]*>/g, tag => {
+      const marker = `\uE200TAG${tags.length}\uE201`;
+      tags.push(tag);
+      return marker;
+    });
+    const linked = safe.replace(/https?:\/\/[^\s<]+/g, url => `<a href="${escapeHTML(url)}">${escapeHTML(url)}</a>`);
+    return tags.reduce((out, tag, index) => out.replaceAll(`\uE200TAG${index}\uE201`, tag), linked);
   }
 
-  function kindText(candidate) {
-    if (candidate.type === 'manual') return '差分';
-    if (candidate.type === 'normalize') return '表記';
-    return 'タグ';
+  function lineConvert(text, policy) {
+    if (policy === 'keep') return text;
+    if (policy === 'br') return String(text).replace(/\n/g, '<br>\n');
+    return String(text).split(/\n{2,}/).map(block => `<p>${block.replace(/\n/g, '<br>')}</p>`).join('\n');
   }
 
-  function candidateTitle(candidate) {
-    if (candidate.type === 'manual') {
-      if (!candidate.before) return `追加：${truncate(candidate.after)}`;
-      if (!candidate.after) return `削除：${truncate(candidate.before)}`;
-      return `${truncate(candidate.before)} → ${truncate(candidate.after)}`;
+  function generatedHTML() {
+    let output = state.working;
+    output = convertLabelsForOutput(output, state.output.labelPolicy);
+    if (state.output.linkPolicy === 'anchor') output = linkifyOutput(output);
+    if (state.output.tagPolicy === 'unwrap') output = stripTagsKeepGenerated(output);
+    output = lineConvert(output, state.output.linePolicy);
+    return output;
+  }
+
+  function generatedPlain() {
+    let output = convertLabelsForOutput(state.working, state.output.labelPolicy === 'keep' ? 'keep' : 'plain');
+    return output.replace(/<[^>]*>/g, '');
+  }
+
+  function renderText(text, options = {}) {
+    const raw = String(text || '');
+    const query = state.search.query;
+    const currentIndex = state.search.matches?.[state.search.current] ?? -1;
+    const offset = options.offset || 0;
+    const tokenPattern = /(https?:\/\/[^\s<]+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|<[^>]*>)/g;
+    let cursor = 0;
+    let tokenMatch;
+    const parts = [];
+
+    const renderSegment = (segment, start, kind = '') => {
+      let html = escapeHTML(segment);
+      if (query) {
+        const re = new RegExp(escapeRegExp(escapeHTML(query)), 'g');
+        let match;
+        let indexShift = 0;
+        html = html.replace(re, (found, matchOffset) => {
+          const actualStart = start + Math.max(0, matchOffset - indexShift);
+          const current = actualStart === currentIndex;
+          return `<mark class="search-hit${current ? ' current' : ''}">${found}</mark>`;
+        });
+      }
+      if (state.display.whitespace && !kind) {
+        html = html.replace(/ /g, '<span class="display-space">·</span>')
+          .replace(/　/g, '<span class="display-space">□</span>')
+          .replace(/\n/g, '<span class="display-space">↵</span>\n')
+          .replace(/\t/g, '<span class="display-space">⇥</span>');
+      }
+      if (kind === 'tag' && state.display.tags) return `<span class="display-tag">${html}</span>`;
+      if ((kind === 'url' || kind === 'email') && state.display.urls) return `<span class="display-url">${html}</span>`;
+      return html;
+    };
+
+    while ((tokenMatch = tokenPattern.exec(raw))) {
+      const before = raw.slice(cursor, tokenMatch.index);
+      if (before) parts.push(renderSegment(before, offset + cursor));
+      const token = tokenMatch[0];
+      const kind = token.startsWith('<') ? 'tag' : token.includes('@') && !token.startsWith('http') ? 'email' : 'url';
+      parts.push(renderSegment(token, offset + tokenMatch.index, kind));
+      cursor = tokenMatch.index + token.length;
     }
-    if (candidate.type === 'normalize') return `${truncate(candidate.before)} → ${truncate(candidate.after)}`;
-    return `【${truncate(candidate.value, 28)}】`;
+    if (cursor < raw.length) parts.push(renderSegment(raw.slice(cursor), offset + cursor));
+    return parts.join('');
   }
 
-  function candidateSubtext(candidate) {
-    if (candidate.type === 'manual') return `変更 ${candidate.order} ・ ${candidate.label}`;
-    if (candidate.type === 'normalize') return `${candidate.category} ・ ${candidate.label}`;
-    return `${candidate.line}行目 ・ 初期方針：${labelActionText(state.labelDefault)}`;
+  function buildAlignedRows() {
+    if (!state.baseline && !state.working) return [];
+    if (!state.baseline) return [{ id: 'working-only', kind: 'insert', before: '比較元を入力すると左右差分を表示します。', after: state.working, beforeStart: 0, beforeEnd: 0, afterStart: 0, afterEnd: state.working.length }];
+    if (!state.working) return [{ id: 'baseline-only', kind: 'delete', before: state.baseline, after: 'CMS作業版を入力してください。', beforeStart: 0, beforeEnd: state.baseline.length, afterStart: 0, afterEnd: 0 }];
+
+    const diff = state.derived.manualDiff;
+    const rows = [];
+    let beforePos = 0;
+    let afterPos = 0;
+    diff.hunks.forEach(hunk => {
+      const commonBefore = state.baseline.slice(beforePos, hunk.beforeStart);
+      const commonAfter = state.working.slice(afterPos, hunk.afterStart);
+      if (commonBefore || commonAfter) {
+        const max = Math.max(commonBefore.split('\n').length, commonAfter.split('\n').length);
+        const beforeLines = commonBefore.split('\n');
+        const afterLines = commonAfter.split('\n');
+        let bOffset = beforePos;
+        let aOffset = afterPos;
+        for (let i = 0; i < max; i += 1) {
+          const b = beforeLines[i] ?? '';
+          const a = afterLines[i] ?? '';
+          rows.push({ id: `same-${rows.length}`, kind: 'same', before: b + (i < beforeLines.length - 1 ? '\n' : ''), after: a + (i < afterLines.length - 1 ? '\n' : ''), beforeStart: bOffset, beforeEnd: bOffset + b.length, afterStart: aOffset, afterEnd: aOffset + a.length });
+          bOffset += b.length + (i < beforeLines.length - 1 ? 1 : 0);
+          aOffset += a.length + (i < afterLines.length - 1 ? 1 : 0);
+        }
+      }
+      rows.push({ id: hunk.id, kind: hunk.kind, before: hunk.before, after: hunk.after, beforeStart: hunk.beforeStart, beforeEnd: hunk.beforeEnd, afterStart: hunk.afterStart, afterEnd: hunk.afterEnd, severity: hunk.severity });
+      beforePos = hunk.beforeEnd;
+      afterPos = hunk.afterEnd;
+    });
+    const tailBefore = state.baseline.slice(beforePos);
+    const tailAfter = state.working.slice(afterPos);
+    if (tailBefore || tailAfter) {
+      const max = Math.max(tailBefore.split('\n').length, tailAfter.split('\n').length);
+      const beforeLines = tailBefore.split('\n');
+      const afterLines = tailAfter.split('\n');
+      let bOffset = beforePos;
+      let aOffset = afterPos;
+      for (let i = 0; i < max; i += 1) {
+        const b = beforeLines[i] ?? '';
+        const a = afterLines[i] ?? '';
+        rows.push({ id: `same-${rows.length}`, kind: 'same', before: b + (i < beforeLines.length - 1 ? '\n' : ''), after: a + (i < afterLines.length - 1 ? '\n' : ''), beforeStart: bOffset, beforeEnd: bOffset + b.length, afterStart: aOffset, afterEnd: aOffset + a.length });
+        bOffset += b.length + (i < beforeLines.length - 1 ? 1 : 0);
+        aOffset += a.length + (i < afterLines.length - 1 ? 1 : 0);
+      }
+    }
+    return rows;
   }
 
-  function renderCandidateList() {
-    const all = allCandidates();
-    const candidates = filterCandidates(all);
-    const container = $('#candidateList');
-
-    $$('.filter-tabs button').forEach(button => button.classList.toggle('is-active', button.dataset.filter === state.filter));
-
-    if (!all.length) {
-      container.innerHTML = '<p class="empty-list">原稿を入力すると、ここに確認が必要なことだけが並びます。</p>';
-      return;
-    }
-    if (!candidates.length) {
-      const label = state.filter === 'pending' ? '未確認の項目はありません。' : 'この条件に合う項目はありません。';
-      container.innerHTML = `<p class="empty-list">${label}</p>`;
-      return;
-    }
-
-    container.innerHTML = candidates.map(candidate => {
-      const status = candidateStatus(candidate);
-      const statusText = candidateStatusText(candidate);
-      const isCritical = candidate.severity === 'critical';
-      return `
-        <button class="candidate-row ${candidate.id === state.activeId ? 'is-selected' : ''}" data-action="select-candidate" data-candidate-id="${escapeHTML(candidate.id)}">
-          <span class="row-top">
-            <span class="row-kind ${candidate.type}">${kindText(candidate)}</span>
-            ${isCritical ? '<span class="row-status critical">重要</span>' : ''}
-            <span class="row-status ${status === 'done' ? 'done' : ''}">${escapeHTML(statusText)}</span>
-          </span>
-          <strong>${escapeHTML(candidateTitle(candidate))}</strong>
-          <small>${escapeHTML(candidateSubtext(candidate))}</small>
-        </button>
-      `;
+  function innerHunk(textBefore, textAfter, side) {
+    const diff = Diff.diffText(textBefore, textAfter);
+    return diff.parts.map(part => {
+      if (side === 'before' && part.type === 'add') return '';
+      if (side === 'after' && part.type === 'remove') return '';
+      const cls = part.type === 'remove' ? 'diff-del' : part.type === 'add' ? 'diff-add' : '';
+      const rendered = renderText(part.value, { offset: 0 });
+      return cls ? `<mark class="${cls}">${rendered}</mark>` : rendered;
     }).join('');
   }
 
-  function labelActionText(action) {
-    return ({ tag: 'タグにする', plain: 'かっこを外す', keep: 'そのまま' }[action] || '未確認');
+  function rowIsActive(row) {
+    const active = activeCandidate();
+    if (!active) return false;
+    if (active.type === 'manual') return row.id === active.sourceId;
+    const start = active.start ?? 0;
+    const end = active.end ?? start;
+    return start <= row.afterEnd && end >= row.afterStart;
   }
 
-  function renderCandidateDetail() {
-    const candidate = getCandidate(state.activeId);
-    const detail = $('#candidateDetail');
-    if (!candidate) {
-      detail.innerHTML = '<p class="detail-empty">右側の候補を選ぶと、変更前後と判断ボタンがここに出ます。</p>';
-      return;
-    }
-
-    const status = candidateStatus(candidate);
-    const detailHeader = `
-      <div class="detail-title">
-        <span class="detail-label">${escapeHTML(kindText(candidate))}</span>
-        <strong>${escapeHTML(candidate.label)}</strong>
-        <span class="detail-location">${candidate.type === 'label' ? `${candidate.line}行目` : candidate.type === 'manual' ? `変更 ${candidate.order}` : `${candidate.start + 1}文字目`}</span>
-      </div>
-    `;
-
-    let change = '';
-    let actions = '';
-
-    if (candidate.type === 'manual') {
-      change = `
-        <div class="focus-diff">
-          <div><label>変更前</label><span class="focus-before">${escapeHTML(candidate.before || '（追加）')}</span></div>
-          <div><label>変更後</label><span class="focus-after">${escapeHTML(candidate.after || '（削除）')}</span></div>
-        </div>
-      `;
-      actions = status === 'done'
-        ? `<button data-action="set-manual" data-value="pending" data-candidate-id="${escapeHTML(candidate.id)}">未確認に戻す</button>`
-        : `<button class="accept" data-action="set-manual" data-value="reviewed" data-candidate-id="${escapeHTML(candidate.id)}">確認済みにする</button>`;
-    }
-
-    if (candidate.type === 'normalize') {
-      change = `
-        <div class="focus-diff">
-          <div><label>変更前</label><span class="focus-before">${escapeHTML(candidate.before)}</span></div>
-          <div><label>変更後</label><span class="focus-after">${escapeHTML(candidate.after)}</span></div>
-        </div>
-      `;
-      const decision = state.normDecisions[candidate.id] || (candidate.mode === 'auto' ? 'accepted' : 'pending');
-      actions = `
-        <button class="accept ${decision === 'accepted' ? 'active-choice' : ''}" data-action="set-normalize" data-value="accepted" data-candidate-id="${escapeHTML(candidate.id)}">採用</button>
-        <button class="skip ${decision === 'skipped' ? 'active-choice' : ''}" data-action="set-normalize" data-value="skipped" data-candidate-id="${escapeHTML(candidate.id)}">除外</button>
-      `;
-    }
-
-    if (candidate.type === 'label') {
-      const selected = state.labelDecisions[candidate.id] || '';
-      change = `
-        <div class="focus-diff">
-          <div><label>対象</label><span class="focus-before" style="text-decoration:none">${escapeHTML(candidate.before)}</span></div>
-          <div><label>タグ化</label><span class="focus-after">${escapeHTML(candidate.after)}</span></div>
-        </div>
-      `;
-      actions = `
-        <button class="tag ${selected === 'tag' ? 'active-choice' : ''}" data-action="set-label" data-value="tag" data-candidate-id="${escapeHTML(candidate.id)}">タグにする</button>
-        <button class="accept ${selected === 'plain' ? 'active-choice' : ''}" data-action="set-label" data-value="plain" data-candidate-id="${escapeHTML(candidate.id)}">かっこを外す</button>
-        <button class="skip ${selected === 'keep' ? 'active-choice' : ''}" data-action="set-label" data-value="keep" data-candidate-id="${escapeHTML(candidate.id)}">そのまま</button>
-      `;
-    }
-
-    const doneNote = status === 'done'
-      ? '<button class="subtle-button" data-action="next-pending">次の未確認へ →</button>'
-      : '';
-
-    detail.innerHTML = `
-      ${detailHeader}
-      <p class="detail-context">${escapeHTML(cleanContext(candidate.context))}</p>
-      ${change}
-      <div class="detail-actions">${actions}</div>
-      ${doneNote}
-      <p class="keyboard-note">A：採用／確認　S：除外　← →：候補移動</p>
-    `;
+  function rowShouldDim(row) {
+    if (!state.display.pendingOnly) return false;
+    return row.kind === 'same' && !rowIsActive(row);
   }
 
-  function renderFocusCard() {
-    const candidate = getCandidate(state.activeId);
-    const card = $('#focusCard');
-    if (!candidate) {
-      card.innerHTML = `
-        <div class="focus-empty">
-          <strong>原稿を読んで、右側の候補を必要な分だけ確認。</strong>
-          <span>候補を選ぶと、ここに変更前後と文脈が出ます。</span>
-        </div>
-      `;
-      return;
-    }
+  function ghostRanges() {
+    if (!state.showGhost || !state.lastTransform?.before) return [];
+    const diff = Diff.diffText(state.lastTransform.before, state.working);
+    return diff.hunks.map(h => ({ start: h.afterStart, end: h.afterEnd || h.afterStart }));
+  }
 
-    const status = candidateStatusText(candidate);
-    const before = candidate.before || '（追加）';
-    const after = candidate.after || '（削除）';
-    const heading = candidate.type === 'label'
-      ? `【${candidate.value}】の扱い：${status}`
-      : `${candidate.label}：${status}`;
-
-    card.innerHTML = `
-      <div class="focus-title">
-        <span class="focus-type">${escapeHTML(kindText(candidate))} ・ ${candidate.severity === 'critical' ? '重要確認' : '確認項目'}</span>
-        <strong>${escapeHTML(heading)}</strong>
-      </div>
-      <p class="focus-context">${escapeHTML(candidate.context)}</p>
-      <div class="focus-diff">
-        <div><label>${candidate.type === 'label' ? '対象' : '変更前'}</label><span class="focus-before">${escapeHTML(before)}</span></div>
-        <div><label>${candidate.type === 'label' ? '現在の方針' : '変更後'}</label><span class="focus-after">${escapeHTML(candidate.type === 'label' ? labelActionText(state.labelDecisions[candidate.id] || state.labelDefault) : after)}</span></div>
-      </div>
-    `;
+  function overlapsGhost(row, ranges) {
+    return ranges.some(range => range.start <= row.afterEnd && range.end >= row.afterStart);
   }
 
   function renderCompare() {
-    const compareToggle = $('#compareToggle');
-    compareToggle.disabled = !state.baseline;
-    compareToggle.style.opacity = state.baseline ? '1' : '.45';
-    if (!state.baseline) {
-      $('#compareStats').innerHTML = '';
-      $('#beforeDiff').textContent = '比較元の原文を追加すると、ここに差分が出ます。';
-      $('#afterDiff').textContent = '比較元の原文を追加すると、ここに差分が出ます。';
+    const beforeSurface = $('#baselineCompare');
+    const afterSurface = $('#afterCompare');
+    const gutter = $('#gutterMap');
+    if (state.mode !== 'compare') {
+      beforeSurface.hidden = true;
+      afterSurface.hidden = true;
+      $('#baselineText').hidden = false;
+      $('#workingText').hidden = false;
+      gutter.innerHTML = '<span class="gutter-marker same">↔</span>';
       return;
     }
-
-    const hunks = state.derived.manualDiff.hunks;
-    const critical = hunks.filter(hunk => hunk.severity === 'critical').length;
-    $('#compareStats').innerHTML = `
-      <span class="compare-stat ${critical ? 'critical' : ''}">差分 ${hunks.length}件</span>
-      <span class="compare-stat">重要 ${critical}件</span>
-    `;
-
-    const active = getCandidate(state.activeId);
-    const activeHunk = active?.type === 'manual' ? active.sourceId : null;
-    const parts = state.derived.manualDiff.parts;
-    $('#beforeDiff').innerHTML = renderDiffPane(parts, 'before', activeHunk);
-    $('#afterDiff').innerHTML = renderDiffPane(parts, 'after', activeHunk);
-  }
-
-  function renderDiffPane(parts, side, activeHunk) {
-    if (!parts.length) return '<span style="color:#7c899c">差分はありません。</span>';
-    return parts.map(part => {
-      if (side === 'before' && part.type === 'add') return '';
-      if (side === 'after' && part.type === 'remove') return '';
-      const className = part.type === 'remove'
-        ? 'diff-del'
-        : part.type === 'add'
-          ? 'diff-add'
-          : '';
-      const focus = part.hunkId && part.hunkId === activeHunk ? ' diff-focus' : '';
-      return className
-        ? `<mark class="${className}${focus}" data-hunk-id="${escapeHTML(part.hunkId)}">${escapeHTML(part.value)}</mark>`
-        : escapeHTML(part.value);
+    beforeSurface.hidden = false;
+    afterSurface.hidden = false;
+    $('#baselineText').hidden = true;
+    $('#workingText').hidden = true;
+    const rows = buildAlignedRows();
+    const ghosts = ghostRanges();
+    beforeSurface.innerHTML = rows.map(row => {
+      const active = rowIsActive(row) ? ' is-active' : '';
+      const dim = rowShouldDim(row) ? ' is-dim' : '';
+      const body = row.kind === 'same' ? renderText(row.before, { offset: row.beforeStart }) : innerHunk(row.before, row.after, 'before');
+      return `<div class="compare-row${active}${dim}" data-row-id="${escapeHTML(row.id)}">${body || '&nbsp;'}</div>`;
     }).join('');
+    afterSurface.innerHTML = rows.map(row => {
+      const active = rowIsActive(row) ? ' is-active' : '';
+      const dim = rowShouldDim(row) ? ' is-dim' : '';
+      const ghost = overlapsGhost(row, ghosts) ? ' ghost-change' : '';
+      const body = row.kind === 'same' ? renderText(row.after, { offset: row.afterStart }) : innerHunk(row.before, row.after, 'after');
+      return `<div class="compare-row${active}${dim}${ghost}" data-row-id="${escapeHTML(row.id)}">${body || '&nbsp;'}</div>`;
+    }).join('');
+    const meaningful = rows.filter(row => row.kind !== 'same');
+    gutter.innerHTML = meaningful.length ? meaningful.map(row => {
+      const symbol = row.kind === 'insert' ? '+' : row.kind === 'delete' ? '−' : '↔';
+      const className = row.kind === 'insert' ? 'add' : row.kind === 'delete' ? 'remove' : 'replace';
+      const important = row.severity === 'critical' ? ' critical' : '';
+      return `<button class="gutter-marker ${className}${important}" data-action="jump-row" data-row-id="${escapeHTML(row.id)}" title="差分へ移動">${symbol}</button>`;
+    }).join('') : '<span class="gutter-marker same">✓</span>';
   }
 
-  function renderOutput() {
-    const output = $('#outputPanel');
-    const current = state.outputTab;
-    $$('.output-tabs button').forEach(button => button.classList.toggle('is-active', button.dataset.outputTab === current));
+  function renderStats() {
+    const b = stats(state.baseline);
+    const w = stats(state.working);
+    $('#baselineStats').textContent = `${b.chars.toLocaleString()}文字・${b.lines.toLocaleString()}行`;
+    $('#workingStats').textContent = `${w.chars.toLocaleString()}文字・${w.lines.toLocaleString()}行`;
+    $('#workingMeta').textContent = `URL ${w.urls}件・HTMLタグ ${w.tags}件`;
+    $('#analysisState').textContent = state.analyzing ? '差分を更新中…' : state.working ? '比較・確認は最新' : '入力待ち';
+    $('#processingCount').textContent = `CMS加工 ${state.cmsHistory.length}件`;
+    $('#ghostButton').disabled = !state.lastTransform;
+    $('#ghostButton').classList.toggle('is-active', state.showGhost);
+    $('#ghostButton').textContent = state.showGhost ? '加工前の重ね表示を閉じる' : '加工前を重ねて表示';
+    $('#editModeButton').classList.toggle('is-active', state.mode === 'edit');
+    $('#compareModeButton').classList.toggle('is-active', state.mode === 'compare');
+  }
 
-    if (current === 'plain') {
-      $('#outputDescription').textContent = 'タグを外した、貼り付け用のプレーンテキストです。';
-      output.innerHTML = `
-        <div class="output-toolbar">
-          <p class="output-note">既存HTMLタグは文字を残して除去します。ラベルは個別の判断に応じて、文字だけまたは【】のまま出力します。</p>
-          <button class="primary-button" data-action="copy" data-copy-type="plain">コピー</button>
-        </div>
-        <pre class="plain-output">${escapeHTML(state.derived.plainOutput)}</pre>
+  function renderReviewRail() {
+    const list = state.derived.list;
+    const pending = state.derived.pending;
+    const critical = state.derived.critical;
+    const done = state.derived.done;
+    $('#railTotal').textContent = pending.length;
+    $('#railSub').textContent = pending.length ? `未確認 ${pending.length}` : list.length ? '確認完了' : '入力待ち';
+    $('#reviewCounts').innerHTML = `
+      <div class="count-tile critical"><strong>${critical.length}</strong><span>重要</span></div>
+      <div class="count-tile pending"><strong>${pending.length}</strong><span>未確認</span></div>
+      <div class="count-tile done"><strong>${done.length}</strong><span>完了</span></div>
+    `;
+    $('#queueListCount').textContent = `${list.length}件`;
+    $('#railDots').innerHTML = list.slice(0, 14).map(item => `<span class="rail-dot ${item.severity === 'critical' && candidateStatus(item) === 'pending' ? 'critical' : candidateStatus(item) === 'pending' ? 'pending' : 'done'}"></span>`).join('');
+
+    const active = activeCandidate();
+    const panel = $('#activeReview');
+    if (!active) {
+      panel.innerHTML = '<p style="color:#7d8aa3;font-size:12px;line-height:1.7">原稿を入力すると、差分・表記・校閲・HTMLの確認がここへ並びます。</p>';
+    } else {
+      const status = candidateStatus(active);
+      const type = ({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[active.type] || '確認');
+      const label = active.type === 'manual'
+        ? active.before && active.after ? `${truncate(active.before, 32)} → ${truncate(active.after, 32)}` : active.before ? `削除：${truncate(active.before, 32)}` : `追加：${truncate(active.after, 32)}`
+        : active.type === 'label' ? active.before : active.type === 'editorial' ? active.before : `${active.before} → ${active.after}`;
+      let actions = '';
+      if (active.type === 'manual') actions = status === 'done'
+        ? `<button data-action="review-pending" data-id="${escapeHTML(active.id)}">未確認に戻す</button>`
+        : `<button class="safe" data-action="review-done" data-id="${escapeHTML(active.id)}">確認済み</button><button data-action="add-note" data-id="${escapeHTML(active.id)}">メモ</button>`;
+      if (active.type === 'style') actions = status === 'skipped'
+        ? `<button data-action="unskip" data-id="${escapeHTML(active.id)}">除外を戻す</button>`
+        : `<button class="primary" data-action="apply-candidate" data-id="${escapeHTML(active.id)}">反映</button><button class="skip" data-action="skip-candidate" data-id="${escapeHTML(active.id)}">今回は残す</button>`;
+      if (active.type === 'label') actions = status === 'skipped'
+        ? `<button data-action="unskip" data-id="${escapeHTML(active.id)}">保留を戻す</button>`
+        : `<button class="primary" data-action="apply-label" data-id="${escapeHTML(active.id)}" data-value="tag">ラベル化</button><button class="safe" data-action="apply-label" data-id="${escapeHTML(active.id)}" data-value="plain">かっこだけ外す</button><button class="skip" data-action="skip-candidate" data-id="${escapeHTML(active.id)}">そのまま</button>`;
+      if (active.type === 'editorial') actions = status === 'done'
+        ? `<button data-action="review-pending" data-id="${escapeHTML(active.id)}">要確認に戻す</button>`
+        : `<button class="safe" data-action="review-done" data-id="${escapeHTML(active.id)}">確認済み</button><button class="skip" data-action="skip-candidate" data-id="${escapeHTML(active.id)}">要確認のまま</button><button data-action="add-note" data-id="${escapeHTML(active.id)}">メモ</button>`;
+      const pair = active.type === 'style' || active.type === 'manual' ? `
+        <div class="change-pair"><div class="before"><label>変更前</label><span>${escapeHTML(active.before || '（追加）')}</span></div><div class="after"><label>変更後</label><span>${escapeHTML(active.after || '（削除）')}</span></div></div>` : '';
+      panel.innerHTML = `
+        <span class="review-type ${active.severity === 'critical' ? 'critical' : ''}">${type}${active.severity === 'critical' ? '｜重要' : ''}</span>
+        <h3>${escapeHTML(label)}</h3>
+        <p>${escapeHTML(active.label)}<br>${escapeHTML(active.context)}</p>
+        ${pair}
+        <div class="review-actions">${actions}</div>
+        <div class="next-row"><span>${status === 'pending' ? '未確認' : status === 'skipped' ? '保留・除外済み' : '確認済み'}</span><button data-action="next-pending">次の未確認へ →</button></div>
       `;
-      return;
     }
 
-    if (current === 'html') {
-      const tagMode = state.existingTagMode === 'keep' ? '既存HTMLタグを保持' : '既存HTMLタグを外す';
-      $('#outputDescription').textContent = `${tagMode}。ラベルの個別判断と初期方針を反映した掲載用HTMLです。`;
-      output.innerHTML = `
-        <div class="output-toolbar">
-          <p class="output-note">タグ設定は右側の「タグの扱い」からいつでも変更できます。</p>
-          <button class="primary-button" data-action="copy" data-copy-type="html">HTMLをコピー</button>
-        </div>
-        <pre class="output-code">${escapeHTML(state.derived.htmlOutput)}</pre>
-      `;
+    $('#queueList').innerHTML = list.map(item => {
+      const status = candidateStatus(item);
+      const title = item.type === 'label' ? item.before : item.type === 'editorial' ? item.before : item.before && item.after ? `${truncate(item.before, 28)} → ${truncate(item.after, 28)}` : truncate(item.before || item.after, 28);
+      return `<button class="queue-item ${item.id === state.activeId ? 'is-active' : ''}" data-action="select-candidate" data-id="${escapeHTML(item.id)}"><span class="q-kind">${({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[item.type])} ・ ${status === 'pending' ? '未確認' : status === 'done' ? '完了' : '保留'}</span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.label)}</small></button>`;
+    }).join('') || '<p class="history-empty">確認項目はありません。</p>';
+  }
+
+  function renderHistory() {
+    const container = $('#historyList');
+    if (!state.cmsHistory.length) {
+      container.innerHTML = '<p class="history-empty">CMS加工はまだありません。空白・記号・表記の整形や、タグ付けを行うとここに残ります。</p>';
       return;
     }
-
-    $('#outputDescription').textContent = '安全のため、生成した info24-label だけを装飾として表示します。その他の既存HTMLはコードとして見えます。';
-    output.innerHTML = `
-      <div class="preview-frame">${safePreviewHTML(state.derived.htmlOutput)}</div>
-      <p class="preview-note">これはHTML構造の簡易プレビューです。本番CMSや本番CSSの完全再現ではありません。</p>
-    `;
+    container.innerHTML = state.cmsHistory.map((item, index) => `
+      <article class="history-item"><time>${escapeHTML(item.at)}</time><div><strong>${escapeHTML(item.description)}　${item.count}件</strong><small>${escapeHTML(item.detail || 'CMS作業版に反映')}</small></div><button data-action="preview-history" data-index="${index}">箇所を見る</button></article>
+    `).join('');
   }
 
-  function renderAudit() {
-    const baseline = state.baseline || '— 比較元なし —';
-    $('#auditGrid').innerHTML = `
-      <section class="audit-column"><header>比較元</header><pre>${escapeHTML(baseline)}</pre></section>
-      <section class="audit-column"><header>原稿</header><pre>${escapeHTML(state.working || '—')}</pre></section>
-      <section class="audit-column"><header>タグなしテキスト</header><pre>${escapeHTML(state.derived.plainOutput || '—')}</pre></section>
-      <section class="audit-column"><header>掲載用HTML</header><pre>${escapeHTML(state.derived.htmlOutput || '—')}</pre></section>
-    `;
+  function renderOutputSettings() {
+    const groups = [
+      ['tag-policy', 'tagPolicy'], ['label-policy', 'labelPolicy'], ['line-policy', 'linePolicy'], ['link-policy', 'linkPolicy']
+    ];
+    groups.forEach(([group, key]) => {
+      $$(`[data-group="${group}"] button`).forEach(button => button.classList.toggle('is-active', button.dataset.value === state.output[key]));
+    });
+    $('#outputPreview').textContent = generatedHTML();
   }
 
-  function renderUndoButtons() {
-    $('#undoButton').disabled = !state.history.length;
-    $('#redoButton').disabled = !state.future.length;
+  function renderSelectionToolbar() {
+    if (state.mode !== 'edit') hideSelectionToolbar();
   }
 
   function renderAll() {
     state.derived = derive();
-    ensureActiveCandidate();
-    renderMeta();
-    renderTagSettings();
-    renderSummary();
-    renderCandidateList();
-    renderCandidateDetail();
-    renderFocusCard();
+    ensureActive();
+    renderStats();
     renderCompare();
-    renderOutput();
-    renderAudit();
-    renderUndoButtons();
+    renderReviewRail();
+    renderHistory();
+    renderOutputSettings();
+    renderSelectionToolbar();
+    renderUndo();
+    persist();
   }
 
-  function selectCandidate(id, focusEditor = true) {
+  function renderUndo() {
+    $('#undoButton').disabled = !state.undoStack.length;
+    $('#redoButton').disabled = !state.redoStack.length;
+  }
+
+  function persist() {
+    try {
+      const data = { version: VERSION, title: state.title, baseline: state.baseline, working: state.working, output: state.output, cmsHistory: state.cmsHistory, exportedAt: new Date().toISOString() };
+      localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify(data));
+    } catch { /* Storage can be unavailable. The app still works. */ }
+  }
+
+  function hydrate() {
+    try {
+      const raw = localStorage.getItem(AUTO_SAVE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (typeof data.working !== 'string') return;
+      state.title = data.title || state.title;
+      state.baseline = data.baseline || '';
+      state.working = data.working || '';
+      state.output = { ...state.output, ...(data.output || {}) };
+      state.cmsHistory = data.cmsHistory || [];
+      $('#projectTitle').value = state.title;
+      $('#baselineText').value = state.baseline;
+      $('#workingText').value = state.working;
+      $('#saveState').textContent = 'この端末に保存中';
+    } catch { /* Ignore malformed stale data. */ }
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    if (mode === 'compare' && !state.baseline) notify('比較元が未入力のため、右側をCMS作業版として表示します');
+    renderAll();
+  }
+
+  function toggleRail(force) {
+    const panel = $('#reviewPanel');
+    state.railOpen = typeof force === 'boolean' ? force : !state.railOpen;
+    panel.hidden = !state.railOpen;
+    $('.rail-summary').setAttribute('aria-expanded', String(state.railOpen));
+  }
+
+  function selectCandidate(id) {
     state.activeId = id;
     renderAll();
-    const candidate = getCandidate(id);
-    if (focusEditor && candidate) {
-      requestAnimationFrame(() => focusCandidateInEditor(candidate));
-    }
+    toggleRail(true);
+    requestAnimationFrame(() => focusCandidate());
   }
 
-  function focusCandidateInEditor(candidate) {
-    const editor = $('#workingText');
-    if (!editor || !state.working) return;
-    let start = candidate.start || 0;
-    let end = candidate.end || start;
-
-    if (candidate.type === 'manual' && !candidate.after) {
-      start = candidate.start || 0;
-      end = start;
-    }
-    if (candidate.type === 'label') return;
-
-    editor.focus({ preventScroll: true });
-    editor.setSelectionRange(start, end);
-    const priorLines = state.working.slice(0, start).split('\n').length;
-    editor.scrollTop = Math.max(0, (priorLines - 4) * 27);
-  }
-
-  function nextPending() {
-    const candidates = allCandidates();
-    const pending = candidates.filter(candidate => candidateStatus(candidate) === 'pending');
-    if (!pending.length) {
-      notify('未確認の項目はありません');
+  function focusCandidate() {
+    const candidate = activeCandidate();
+    if (!candidate) return;
+    if (state.mode === 'edit') {
+      const editor = $('#workingText');
+      const start = candidate.start ?? 0;
+      const end = candidate.end ?? start;
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(start, end);
+      const line = state.working.slice(0, start).split('\n').length;
+      editor.scrollTop = Math.max(0, (line - 4) * 29);
       return;
     }
-    const currentIndex = pending.findIndex(candidate => candidate.id === state.activeId);
-    const next = pending[(currentIndex + 1 + pending.length) % pending.length];
-    selectCandidate(next.id);
+    const row = candidate.type === 'manual' ? candidate.sourceId : findRowForCandidate(candidate);
+    const target = $('#afterCompare').querySelector(`[data-row-id="${CSS.escape(row)}"]`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const leftTarget = $('#baselineCompare').querySelector(`[data-row-id="${CSS.escape(row)}"]`);
+    leftTarget?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function findRowForCandidate(candidate) {
+    const row = buildAlignedRows().find(item => (candidate.start ?? 0) <= item.afterEnd && (candidate.end ?? candidate.start ?? 0) >= item.afterStart);
+    return row?.id || '';
   }
 
   function moveCandidate(direction) {
-    const candidates = filterCandidates(allCandidates());
-    if (!candidates.length) return;
-    const currentIndex = candidates.findIndex(candidate => candidate.id === state.activeId);
-    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + direction + candidates.length) % candidates.length;
-    selectCandidate(candidates[nextIndex].id);
+    const pool = state.derived.pending.length ? state.derived.pending : state.derived.list;
+    if (!pool.length) return;
+    const current = pool.findIndex(item => item.id === state.activeId);
+    const next = pool[(current + direction + pool.length) % pool.length] || pool[0];
+    selectCandidate(next.id);
   }
 
-  function setManual(candidateId, value) {
-    const candidate = getCandidate(candidateId);
-    if (!candidate) return;
-    commitHistory();
-    state.manualReviews[candidate.sourceId] = value === 'reviewed' ? 'reviewed' : 'pending';
+  function nextPending() {
+    const pool = state.derived.pending;
+    if (!pool.length) { notify('未確認の項目はありません'); return; }
+    const current = pool.findIndex(item => item.id === state.activeId);
+    selectCandidate(pool[(current + 1 + pool.length) % pool.length].id);
+  }
+
+  function reviewDone(id) {
+    pushUndo();
+    state.reviews[id] = 'done';
     renderAll();
-    notify(value === 'reviewed' ? '差分を確認済みにしました' : '未確認に戻しました');
+    notify('確認済みにしました');
   }
 
-  function setNormalization(candidateId, value) {
-    const candidate = getCandidate(candidateId);
-    if (!candidate) return;
-    commitHistory();
-    state.normDecisions[candidate.id] = value;
+  function reviewPending(id) {
+    pushUndo();
+    delete state.reviews[id];
     renderAll();
-    notify(value === 'accepted' ? '表記統一を採用しました' : 'この原稿では除外しました');
+    notify('未確認に戻しました');
   }
 
-  function setLabel(candidateId, value) {
-    const candidate = getCandidate(candidateId);
+  function skipCandidate(id) {
+    const candidate = state.derived.list.find(item => item.id === id);
     if (!candidate) return;
-    commitHistory();
-    state.labelDecisions[candidate.id] = value;
+    pushUndo();
+    state.skipped[candidate.skipKey] = true;
     renderAll();
-    notify(`ラベルを「${labelActionText(value)}」にしました`);
+    notify('この原稿では保留・除外にしました');
   }
 
-  function resetDecisions(message) {
-    const hadDecisions = Object.keys(state.normDecisions).length || Object.keys(state.labelDecisions).length || Object.keys(state.manualReviews).length;
-    state.normDecisions = {};
-    state.labelDecisions = {};
-    state.manualReviews = {};
-    state.history = [];
-    state.future = [];
-    if (hadDecisions) notify(message || '原稿変更により、確認内容を更新しました');
+  function unskip(id) {
+    const candidate = state.derived.list.find(item => item.id === id);
+    if (!candidate) return;
+    pushUndo();
+    delete state.skipped[candidate.skipKey];
+    renderAll();
+    notify('保留・除外を戻しました');
   }
 
-  function scheduleWorkingAnalysis() {
-    state.analyzing = true;
-    renderMeta();
-    clearTimeout(state.debounceTimer);
-    state.debounceTimer = setTimeout(() => {
-      state.analyzing = false;
-      resetDecisions('原稿変更により、候補の判断を更新しました');
-      renderAll();
-    }, 550);
+  function applyCandidate(id) {
+    const candidate = state.derived.list.find(item => item.id === id);
+    if (!candidate) return;
+    const next = replaceAt(state.working, candidate.start, candidate.end, candidate.after);
+    commitWorking(next, candidate.label, 1, `${candidate.before} → ${candidate.after}`);
   }
 
-  function scheduleBaselineAnalysis() {
-    state.analyzing = true;
-    renderMeta();
-    clearTimeout(state.debounceTimer);
-    state.debounceTimer = setTimeout(() => {
-      state.analyzing = false;
-      state.manualReviews = {};
-      renderAll();
-    }, 450);
+  function applyLabel(id, action) {
+    const candidate = state.derived.list.find(item => item.id === id);
+    if (!candidate) return;
+    let replacement = candidate.before;
+    if (action === 'tag') replacement = `${candidate.leading}<span class="info24-label">${escapeHTML(candidate.value)}</span>${candidate.trailing}`;
+    if (action === 'plain') replacement = `${candidate.leading}${candidate.value}${candidate.trailing}`;
+    const description = action === 'tag' ? '【】をラベル化' : '【】のかっこを外す';
+    commitWorking(replaceAt(state.working, candidate.start, candidate.end, replacement), description, 1, candidate.before);
   }
 
-  function toggleBaseline(force) {
-    const panel = $('#baselinePanel');
-    const shouldOpen = typeof force === 'boolean' ? force : panel.hidden;
-    panel.hidden = !shouldOpen;
-    $('#baselineToggle').textContent = shouldOpen ? '比較元を閉じる' : '原文を追加して比較';
-    if (shouldOpen) setTimeout(() => $('#baselineText').focus(), 0);
+  function addNote(id) {
+    const candidate = state.derived.list.find(item => item.id === id);
+    if (!candidate) return;
+    const note = window.prompt('メモを入力してください');
+    if (note === null) return;
+    pushUndo();
+    state.reviews[id] = 'done';
+    state.cmsHistory.unshift({ id: `${Date.now()}-${Math.random()}`, at: nowLabel(), description: '確認メモ', count: 1, detail: `${candidate.before || candidate.label}｜${note}`, before: state.working, after: state.working });
+    renderAll();
+    notify('メモを記録しました');
   }
 
-  function toggleDrawer(id, buttonId) {
-    const drawer = $(id);
-    const willOpen = drawer.hidden;
-    drawer.hidden = !willOpen;
-    const button = $(buttonId);
-    if (button) button.classList.toggle('is-active', willOpen);
-    if (willOpen) setTimeout(() => drawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 0);
+  function openSearch() {
+    $('#commandDialog').close();
+    state.search.open = true;
+    $('#searchBar').hidden = false;
+    setTimeout(() => $('#searchInput').focus(), 0);
   }
 
-  function toggleTagSettings() {
-    const panel = $('#tagSettings');
-    const button = $('#tagSettingsButton');
-    panel.hidden = !panel.hidden;
-    button.setAttribute('aria-expanded', String(!panel.hidden));
+  function closeSearch() {
+    state.search.open = false;
+    state.search.query = '';
+    state.search.current = 0;
+    state.search.matches = [];
+    $('#searchInput').value = '';
+    $('#searchBar').hidden = true;
+    renderCompare();
   }
 
-  function toggleCopyMenu() {
-    const menu = $('#copyMenu');
-    const button = $('#copyMenuButton');
-    menu.hidden = !menu.hidden;
-    button.setAttribute('aria-expanded', String(!menu.hidden));
-  }
-
-  async function copyText(kind) {
-    const pendingCount = allCandidates().filter(candidate => candidateStatus(candidate) === 'pending').length;
-    if (pendingCount && !window.confirm(`未確認の項目が${pendingCount}件あります。\nこのままコピーしますか？`)) return;
-
-    let value = '';
-    let message = '';
-    if (kind === 'plain') {
-      value = state.derived.plainOutput;
-      message = 'タグなしテキストをコピーしました';
+  function computeSearch() {
+    const query = state.search.query;
+    const matches = [];
+    if (query) {
+      let position = 0;
+      while (position <= state.working.length) {
+        const found = state.working.indexOf(query, position);
+        if (found < 0) break;
+        matches.push(found);
+        position = found + Math.max(query.length, 1);
+      }
     }
-    if (kind === 'html') {
-      value = state.derived.htmlOutput;
-      message = '掲載用HTMLをコピーしました';
-    }
-    if (kind === 'report') {
-      value = buildReport();
-      message = '差分一覧をコピーしました';
-    }
+    state.search.matches = matches;
+    if (state.search.current >= matches.length) state.search.current = 0;
+    $('#searchCount').textContent = query ? `${matches.length}件` : '0件';
+    renderCompare();
+  }
 
+  function goSearch(direction) {
+    if (!state.search.matches?.length) { notify('該当はありません'); return; }
+    state.search.current = (state.search.current + direction + state.search.matches.length) % state.search.matches.length;
+    const start = state.search.matches[state.search.current];
+    const editor = $('#workingText');
+    if (state.mode === 'edit') {
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(start, start + state.search.query.length);
+      const line = state.working.slice(0, start).split('\n').length;
+      editor.scrollTop = Math.max(0, (line - 4) * 29);
+    } else {
+      const row = buildAlignedRows().find(item => start <= item.afterEnd && start >= item.afterStart);
+      $('#afterCompare').querySelector(`[data-row-id="${CSS.escape(row?.id || '')}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    renderCompare();
+  }
+
+  function replaceSearch(all) {
+    const query = state.search.query;
+    const replacement = $('#replaceInput').value;
+    if (!query) { notify('検索する文字列を入力してください'); return; }
+    const protect = $('#replaceProtect').checked;
+    let count = 0;
+    let output;
+    if (protect) {
+      const tokenized = tokeniseProtected(state.working, { protect: true });
+      const re = new RegExp(escapeRegExp(query), all ? 'g' : '');
+      output = tokenized.restore(tokenized.safe.replace(re, () => { count += 1; return replacement; }));
+    } else {
+      const re = new RegExp(escapeRegExp(query), all ? 'g' : '');
+      output = state.working.replace(re, () => { count += 1; return replacement; });
+    }
+    if (!count) { notify('置換対象はありません'); return; }
+    commitWorking(output, all ? '検索結果を一括置換' : '検索結果を置換', count, `${query} → ${replacement}`);
+    computeSearch();
+  }
+
+  function openTransform(recipe) {
+    $('#commandDialog').close();
+    const result = runRecipe(recipe);
+    state.pendingTransform = result;
+    $('#transformTitle').textContent = result.description;
+    $('#transformSummary').textContent = `変更予定：${result.count}件　保護して除外：${result.protectedCount}箇所`;
+    const beforeParts = result.before.split('\n').filter((line, index) => result.after.split('\n')[index] !== line).slice(0, 3);
+    const afterParts = result.after.split('\n').filter((line, index) => result.before.split('\n')[index] !== line).slice(0, 3);
+    $('#transformExamples').innerHTML = result.count ? `
+      <p class="transform-summary">${escapeHTML(result.detail || '変換内容を確認してから反映します。')}</p>
+      ${beforeParts.map((line, index) => `<div class="example-pair"><code>${escapeHTML(line || '（空行）')}</code><span class="arrow">↓</span><code>${escapeHTML(afterParts[index] || '（空行）')}</code></div>`).join('') || '<p class="transform-summary">変更箇所をプレビューします。</p>'}` : '<p class="transform-summary">変更対象はありません。</p>';
+    $('#applyTransformButton').disabled = !result.count;
+    $('#applyTransformButton').textContent = result.count ? `${result.count}件を反映` : '反映';
+    $('#transformDialog').showModal();
+  }
+
+  function previewPattern(kind) {
+    const result = patternTransform(kind);
+    state.pendingTransform = result;
+    $('#patternPreview').innerHTML = result.count ? `
+      <p><strong>${escapeHTML(result.description)}</strong></p><p>対象：${result.count}件<br>${escapeHTML(result.detail)}</p>
+      <div class="example-pair"><code>${escapeHTML(result.before)}</code><span class="arrow">↓</span><code>${escapeHTML(result.after)}</code></div>` : '<p>対象はありません。</p>';
+    $('#applyPatternButton').disabled = !result.count;
+    $('#applyPatternButton').textContent = result.count ? `${result.count}件を反映` : '反映';
+  }
+
+  function applyPendingTransform() {
+    const result = state.pendingTransform;
+    if (!result || !result.count) return;
+    commitWorking(result.after, result.description, result.count, result.detail);
+    $('#transformDialog').close();
+    $('#patternDialog').close();
+    state.pendingTransform = null;
+  }
+
+  function setOutput(key, value) {
+    pushUndo();
+    state.output[key] = value;
+    renderAll();
+    notify('出力設定を更新しました');
+  }
+
+  function toggleDrawer(id, button) {
+    const el = $(id);
+    el.hidden = !el.hidden;
+    if (button) button.classList.toggle('is-active', !el.hidden);
+  }
+
+  function requestCopy(kind) {
+    $('#copyMenu').hidden = true;
+    $('#copyButton').setAttribute('aria-expanded', 'false');
+    const pending = state.derived.pending;
+    if (pending.length) {
+      state.pendingCopy = kind;
+      const critical = pending.filter(item => item.severity === 'critical').length;
+      $('#copyConfirmText').textContent = critical
+        ? `重要な未確認が${critical}件、未確認が合計${pending.length}件あります。内容を把握したうえでコピーしてください。`
+        : `未確認の項目が${pending.length}件あります。このままコピーできます。`;
+      $('#copyConfirmDialog').showModal();
+      return;
+    }
+    performCopy(kind);
+  }
+
+  async function performCopy(kind) {
+    const map = { plain: generatedPlain(), html: generatedHTML(), report: buildReport() };
+    const label = { plain: '整形後テキスト', html: '掲載用HTML', report: '差分・確認記録' }[kind];
+    const value = map[kind] || '';
     try {
       await navigator.clipboard.writeText(value);
     } catch {
-      const temporary = document.createElement('textarea');
-      temporary.value = value;
-      temporary.style.position = 'fixed';
-      temporary.style.opacity = '0';
-      document.body.appendChild(temporary);
-      temporary.select();
+      const field = document.createElement('textarea');
+      field.value = value;
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
       document.execCommand('copy');
-      temporary.remove();
+      field.remove();
     }
-    $('#copyMenu').hidden = true;
-    $('#copyMenuButton').setAttribute('aria-expanded', 'false');
-    notify(message);
+    $('#copyConfirmDialog').close();
+    state.pendingCopy = null;
+    notify(`${label}をコピーしました`);
   }
 
   function buildReport() {
-    const lines = [];
-    lines.push(`Text Review Studio v0.4.0｜${state.title}`);
-    lines.push(`作成日時：${new Date().toLocaleString('ja-JP')}`);
-    lines.push('');
-    const candidates = allCandidates();
-    if (!candidates.length) lines.push('確認対象はありません。');
-    candidates.forEach((candidate, index) => {
-      lines.push(`${index + 1}. [${kindText(candidate)}／${candidateStatusText(candidate)}${candidate.severity === 'critical' ? '／重要' : ''}] ${candidateTitle(candidate)}`);
-      if (candidate.type !== 'label') {
-        lines.push(`   変更前：${candidate.before || '（追加）'}`);
-        lines.push(`   変更後：${candidate.after || '（削除）'}`);
-      } else {
-        lines.push(`   方針：${labelActionText(state.labelDecisions[candidate.id] || state.labelDefault)}`);
-      }
+    const lines = [`Text Review Studio ${VERSION}｜${state.title}`, `作成日時：${new Date().toLocaleString('ja-JP')}`, ''];
+    if (!state.derived.list.length) lines.push('確認対象はありません。');
+    state.derived.list.forEach((item, index) => {
+      const status = candidateStatus(item) === 'pending' ? '未確認' : candidateStatus(item) === 'done' ? '確認済み' : '保留';
+      const type = ({ manual: '差分', style: '表記', label: 'HTML', editorial: '校閲' }[item.type]);
+      lines.push(`${index + 1}. [${type}／${status}${item.severity === 'critical' ? '／重要' : ''}] ${item.before && item.after ? `${item.before} → ${item.after}` : item.before || item.label}`);
+      lines.push(`   内容：${item.label}`);
     });
+    if (state.cmsHistory.length) {
+      lines.push('', 'CMS加工履歴');
+      state.cmsHistory.slice().reverse().forEach(item => lines.push(`- ${item.at} ${item.description} ${item.count}件${item.detail ? `｜${item.detail}` : ''}`));
+    }
     return lines.join('\n');
   }
+
+  function openAudit() {
+    const html = generatedHTML();
+    $('#auditGrid').innerHTML = [
+      ['比較元', state.baseline || '— 比較元なし —'],
+      ['CMS作業版', state.working || '—'],
+      ['整形後テキスト', generatedPlain() || '—'],
+      ['掲載用HTML', html || '—']
+    ].map(([label, text]) => `<section><header>${escapeHTML(label)}</header><pre>${escapeHTML(text)}</pre></section>`).join('');
+    $('#auditDialog').showModal();
+  }
+
+  function jumpRow(id) {
+    if (state.mode !== 'compare') setMode('compare');
+    requestAnimationFrame(() => {
+      $('#afterCompare').querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('#baselineCompare').querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  function showSelectionToolbar() {
+    if (state.mode !== 'edit') return;
+    const editor = $('#workingText');
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    if (start === end) { hideSelectionToolbar(); return; }
+    const toolbar = $('#selectionToolbar');
+    const rect = editor.getBoundingClientRect();
+    toolbar.style.left = `${Math.min(rect.width - 265, 22)}px`;
+    toolbar.style.top = `${Math.max(8, editor.scrollTop + 8)}px`;
+    toolbar.hidden = false;
+  }
+
+  function hideSelectionToolbar() { $('#selectionToolbar').hidden = true; }
 
   function notify(message) {
     const toast = $('#toast');
@@ -880,25 +1172,47 @@
     notify.timer = setTimeout(() => toast.classList.remove('is-visible'), 2600);
   }
 
+  function scheduleAnalysis(target = 'working') {
+    state.analyzing = true;
+    renderStats();
+    clearTimeout(state.debounceTimer);
+    state.debounceTimer = setTimeout(() => {
+      state.analyzing = false;
+      if (target === 'working') state.manualReviews = {};
+      renderAll();
+    }, 520);
+  }
+
+  function loadSample() {
+    if ((state.working || state.baseline) && !window.confirm('現在の内容をサンプルに置き換えますか？')) return;
+    state.title = 'サンプル｜ポケモンJリーグフェス告知';
+    state.baseline = `浦和レッズは、8月15日（土）サンフレッチェ広島戦にて「ポケモンJリーグフェス」を開催いたします。\n\n当日は来場者先着52,000名さまにEVO BAGをプレゼントいたします。\n\n【対象試合】\n8月15日(日) サンフレッチェ広島戦\n\n詳細は https://example.com/ticket?foo=1&bar=2 をご確認ください。\n\n宜しくお願いします！`;
+    state.working = `浦和レッズは、8/15(土)サンフレッチェ広島戦にて「ポケモンJリーグフェス」を開催いたします。\n\n当日は、来場者先着52,000名さまにEVO BAGをプレゼントいたします。様々なイベントを予定しております。\n\n【対象試合】\n8/15(土) サンフレッチェ広島戦\n\n詳細は https://example.com/ticket?foo=1&bar=2 をご確認ください。\n\n<span class="note">宜しくお願いします！</span>\n\n新加入選手は精一杯プレーいたします。`;
+    state.reviews = {}; state.skipped = {}; state.cmsHistory = []; state.undoStack = []; state.redoStack = []; state.lastTransform = null; state.mode = 'compare';
+    $('#projectTitle').value = state.title; $('#baselineText').value = state.baseline; $('#workingText').value = state.working;
+    $('#moreDialog').close();
+    renderAll();
+    notify('サンプルを読み込みました');
+  }
+
+  function clearWork() {
+    if (!window.confirm('原稿・比較元・判断・履歴を消去しますか？')) return;
+    state.title = '名称未設定の原稿'; state.baseline = ''; state.working = ''; state.reviews = {}; state.skipped = {}; state.cmsHistory = []; state.undoStack = []; state.redoStack = []; state.lastTransform = null; state.activeId = null;
+    $('#projectTitle').value = state.title; $('#baselineText').value = ''; $('#workingText').value = '';
+    localStorage.removeItem(AUTO_SAVE_KEY);
+    $('#moreDialog').close();
+    renderAll();
+    notify('この画面の内容を消去しました');
+  }
+
   function exportWork() {
-    const payload = {
-      version: '0.4.0',
-      title: state.title,
-      baseline: state.baseline,
-      working: state.working,
-      normDecisions: state.normDecisions,
-      labelDecisions: state.labelDecisions,
-      manualReviews: state.manualReviews,
-      existingTagMode: state.existingTagMode,
-      labelDefault: state.labelDefault,
-      exportedAt: new Date().toISOString()
-    };
+    const payload = { version: VERSION, title: state.title, baseline: state.baseline, working: state.working, output: state.output, reviews: state.reviews, skipped: state.skipped, cmsHistory: state.cmsHistory, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `v0.4.0-${(state.title || 'text-review').replace(/[\\/:*?"<>|]/g, '_')}-work.json`;
-    anchor.click();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${VERSION}-${(state.title || 'text-review').replace(/[\\/:*?"<>|]/g, '_')}-work.json`;
+    link.click();
     setTimeout(() => URL.revokeObjectURL(url), 500);
     notify('作業データを書き出しました');
   }
@@ -912,149 +1226,76 @@
         state.title = data.title || '名称未設定の原稿';
         state.baseline = data.baseline || '';
         state.working = data.working;
-        state.normDecisions = data.normDecisions || {};
-        state.labelDecisions = data.labelDecisions || {};
-        state.manualReviews = data.manualReviews || {};
-        state.existingTagMode = data.existingTagMode || 'keep';
-        state.labelDefault = data.labelDefault || 'tag';
-        state.history = [];
-        state.future = [];
-        $('#projectTitle').value = state.title;
-        $('#workingText').value = state.working;
-        $('#baselineText').value = state.baseline;
-        toggleBaseline(Boolean(state.baseline));
+        state.output = { ...state.output, ...(data.output || {}) };
+        state.reviews = data.reviews || {};
+        state.skipped = data.skipped || {};
+        state.cmsHistory = data.cmsHistory || [];
+        state.undoStack = []; state.redoStack = [];
+        $('#projectTitle').value = state.title; $('#baselineText').value = state.baseline; $('#workingText').value = state.working;
         $('#moreDialog').close();
         renderAll();
         notify('作業データを読み込みました');
-      } catch {
-        notify('読み込めませんでした。Text Review StudioのJSONか確認してください。');
-      }
+      } catch { notify('読み込めませんでした。Text Review StudioのJSONを確認してください。'); }
     };
     reader.readAsText(file);
   }
 
-  function loadSample() {
-    if (state.working && !window.confirm('現在の内容をサンプルに置き換えますか？')) return;
-    state.title = 'サンプル｜ポケモンJリーグフェス告知';
-    state.baseline = `浦和レッズは、8月15日（土）サンフレッチェ広島戦にて「ポケモンJリーグフェス」を開催いたします。\n\n当日は来場者先着52,000名さまにEVO BAGをプレゼントいたします。\n\n【対象試合】\n8月15日(土) サンフレッチェ広島戦\n\n詳細は https://example.com/ticket?foo=1&bar=2 をご確認ください。\n\n宜しくお願いします！`;
-    state.working = `浦和レッズは、8/15(土)サンフレッチェ広島戦にて「ポケモンJリーグフェス」を開催いたします。\n\n当日は、来場者先着52,000名さまにEVO BAGをプレゼントいたします。様々なイベントを予定しております。\n\n【対象試合】\n8/15(土) サンフレッチェ広島戦\n\n詳細は https://example.com/ticket?foo=1&bar=2 をご確認ください。\n\n<span class="note">宜しくお願いします！</span>\n\n新加入選手は精一杯プレーいたします。`;
-    state.normDecisions = {};
-    state.labelDecisions = {};
-    state.manualReviews = {};
-    state.history = [];
-    state.future = [];
-    $('#projectTitle').value = state.title;
-    $('#workingText').value = state.working;
-    $('#baselineText').value = state.baseline;
-    toggleBaseline(true);
-    if ($('#moreDialog').open) $('#moreDialog').close();
-    renderAll();
-    notify('サンプルを読み込みました');
-  }
-
-  function clearWork() {
-    if (!window.confirm('原稿・判断・設定をこの画面から消去しますか？')) return;
-    state.title = '名称未設定の原稿';
-    state.working = '';
-    state.baseline = '';
-    state.normDecisions = {};
-    state.labelDecisions = {};
-    state.manualReviews = {};
-    state.history = [];
-    state.future = [];
-    state.activeId = null;
-    $('#projectTitle').value = state.title;
-    $('#workingText').value = '';
-    $('#baselineText').value = '';
-    toggleBaseline(false);
-    if ($('#moreDialog').open) $('#moreDialog').close();
-    renderAll();
-    notify('この画面の内容を消去しました');
-  }
-
-  function setExistingTagMode(value) {
-    if (value === state.existingTagMode) return;
-    commitHistory();
-    state.existingTagMode = value;
-    renderAll();
-    notify(value === 'keep' ? '既存HTMLタグを保持します' : '既存HTMLタグを外します');
-  }
-
-  function setLabelDefault(value) {
-    if (value === state.labelDefault) return;
-    commitHistory();
-    state.labelDefault = value;
-    renderAll();
-    notify(`ラベルの初期方針を「${labelActionText(value)}」にしました`);
-  }
-
-  function applyLabelDefault() {
-    const pending = state.derived.labelCandidates.filter(candidate => !state.labelDecisions[candidate.id]);
-    if (!pending.length) {
-      notify('未確認のラベルはありません');
-      return;
-    }
-    commitHistory();
-    pending.forEach(candidate => { state.labelDecisions[candidate.id] = state.labelDefault; });
-    renderAll();
-    notify(`${pending.length}件のラベルに初期方針を適用しました`);
-  }
-
-  function openAudit() {
-    renderAudit();
-    $('#auditDialog').showModal();
-  }
-
-  function actionForActive(kind) {
-    const candidate = getCandidate(state.activeId);
-    if (!candidate) return;
-    if (kind === 'accept') {
-      if (candidate.type === 'manual') setManual(candidate.id, 'reviewed');
-      if (candidate.type === 'normalize') setNormalization(candidate.id, 'accepted');
-      if (candidate.type === 'label') setLabel(candidate.id, 'tag');
-    }
-    if (kind === 'skip') {
-      if (candidate.type === 'normalize') setNormalization(candidate.id, 'skipped');
-      if (candidate.type === 'label') setLabel(candidate.id, 'plain');
-    }
-  }
-
-  function handleAction(action, target) {
+  function handleAction(action, control) {
     switch (action) {
       case 'scroll-top': window.scrollTo({ top: 0, behavior: 'smooth' }); break;
-      case 'toggle-copy-menu': toggleCopyMenu(); break;
-      case 'toggle-more': $('#moreDialog').showModal(); break;
-      case 'close-more': $('#moreDialog').close(); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
-      case 'paste-working': navigator.clipboard?.readText().then(text => { $('#workingText').value = text; state.working = text; scheduleWorkingAnalysis(); }).catch(() => notify('貼り付けられませんでした。ブラウザの貼り付けをご利用ください。')); break;
-      case 'clear-working':
-        if (state.working && window.confirm('原稿を消去しますか？')) { $('#workingText').value = ''; state.working = ''; resetDecisions(); renderAll(); }
-        break;
-      case 'paste-baseline': navigator.clipboard?.readText().then(text => { $('#baselineText').value = text; state.baseline = text; scheduleBaselineAnalysis(); }).catch(() => notify('貼り付けられませんでした。ブラウザの貼り付けをご利用ください。')); break;
-      case 'remove-baseline':
-        state.baseline = ''; state.manualReviews = {}; $('#baselineText').value = ''; toggleBaseline(false); renderAll(); notify('比較元を外しました');
-        break;
-      case 'toggle-baseline': toggleBaseline(); break;
-      case 'toggle-compare':
-        if (!state.baseline) { toggleBaseline(true); notify('比較元の原文を追加してください'); }
-        else toggleDrawer('#compareDrawer', '#compareToggle');
-        break;
-      case 'toggle-output': toggleDrawer('#outputDrawer', '#outputToggle'); break;
+      case 'set-mode': setMode(control.dataset.mode); break;
+      case 'toggle-review-rail': toggleRail(); break;
+      case 'toggle-copy-menu': $('#copyMenu').hidden = !$('#copyMenu').hidden; $('#copyButton').setAttribute('aria-expanded', String(!$('#copyMenu').hidden)); break;
+      case 'request-copy': requestCopy(control.dataset.copyType); break;
+      case 'confirm-copy': performCopy(state.pendingCopy); break;
+      case 'open-command': $('#commandDialog').showModal(); break;
+      case 'open-more': $('#moreDialog').showModal(); break;
+      case 'open-search': openSearch(); break;
+      case 'close-search': closeSearch(); break;
+      case 'search-next': goSearch(1); break;
+      case 'search-prev': goSearch(-1); break;
+      case 'quick-search': state.search.query = control.dataset.query; $('#searchInput').value = state.search.query; computeSearch(); goSearch(0); break;
+      case 'toggle-replace': state.search.replaceOpen = !state.search.replaceOpen; $('#replaceControls').hidden = !state.search.replaceOpen; break;
+      case 'replace-one': replaceSearch(false); break;
+      case 'replace-all': replaceSearch(true); break;
+      case 'open-transform': openTransform(control.dataset.recipe); break;
+      case 'apply-pending-transform': applyPendingTransform(); break;
+      case 'open-pattern-tags': $('#commandDialog').close(); $('#patternDialog').showModal(); break;
+      case 'preview-pattern': previewPattern(control.dataset.pattern); break;
+      case 'unwrap-working-tags': $('#commandDialog').close(); openTransform('unwrap'); break;
+      case 'open-display-settings': $('#commandDialog').close(); $('#displayDialog').showModal(); break;
+      case 'toggle-display-settings': $('#displayDialog').showModal(); break;
+      case 'toggle-ghost': state.showGhost = !state.showGhost; renderAll(); break;
+      case 'wrap-selection': wrapSelection(control.dataset.tag); break;
+      case 'select-candidate': selectCandidate(control.dataset.id); break;
+      case 'next-pending': nextPending(); break;
+      case 'review-done': reviewDone(control.dataset.id); break;
+      case 'review-pending': reviewPending(control.dataset.id); break;
+      case 'skip-candidate': skipCandidate(control.dataset.id); break;
+      case 'unskip': unskip(control.dataset.id); break;
+      case 'apply-candidate': applyCandidate(control.dataset.id); break;
+      case 'apply-label': applyLabel(control.dataset.id, control.dataset.value); break;
+      case 'add-note': addNote(control.dataset.id); break;
+      case 'jump-row': jumpRow(control.dataset.rowId); break;
+      case 'toggle-output-settings': toggleDrawer('#outputSettings', '#outputSettingsButton'); break;
+      case 'toggle-history': toggleDrawer('#historyDrawer', '#historyButton'); break;
+      case 'set-tag-policy': setOutput('tagPolicy', control.dataset.value); break;
+      case 'set-label-policy': setOutput('labelPolicy', control.dataset.value); break;
+      case 'set-line-policy': setOutput('linePolicy', control.dataset.value); break;
+      case 'set-link-policy': setOutput('linkPolicy', control.dataset.value); break;
       case 'open-audit': openAudit(); break;
       case 'close-audit': $('#auditDialog').close(); break;
-      case 'toggle-tag-settings': toggleTagSettings(); break;
-      case 'set-existing-tags': setExistingTagMode(target.dataset.value); break;
-      case 'set-label-default': setLabelDefault(target.dataset.value); break;
-      case 'apply-label-default': applyLabelDefault(); break;
-      case 'set-filter': state.filter = target.dataset.filter; renderCandidateList(); break;
-      case 'select-candidate': selectCandidate(target.dataset.candidateId); break;
-      case 'set-manual': setManual(target.dataset.candidateId, target.dataset.value); break;
-      case 'set-normalize': setNormalization(target.dataset.candidateId, target.dataset.value); break;
-      case 'set-label': setLabel(target.dataset.candidateId, target.dataset.value); break;
-      case 'next-pending': nextPending(); break;
-      case 'set-output-tab': state.outputTab = target.dataset.outputTab; renderOutput(); break;
-      case 'copy': copyText(target.dataset.copyType); break;
+      case 'preview-history': {
+        const item = state.cmsHistory[Number(control.dataset.index)];
+        if (item) { state.lastTransform = item; state.showGhost = true; setMode('compare'); notify('このCMS加工の差分を重ねて表示しています'); }
+        break;
+      }
+      case 'paste-baseline': navigator.clipboard?.readText().then(text => { state.baseline = text; $('#baselineText').value = text; scheduleAnalysis('baseline'); }).catch(() => notify('貼り付けられませんでした。ブラウザの貼り付けをご利用ください。')); break;
+      case 'paste-working': navigator.clipboard?.readText().then(text => { state.working = text; $('#workingText').value = text; scheduleAnalysis('working'); }).catch(() => notify('貼り付けられませんでした。ブラウザの貼り付けをご利用ください。')); break;
+      case 'clear-baseline': if (state.baseline && window.confirm('比較元を消去しますか？')) { pushUndo(); state.baseline = ''; $('#baselineText').value = ''; renderAll(); } break;
+      case 'clear-working': if (state.working && window.confirm('CMS作業版を消去しますか？')) { pushUndo(); state.working = ''; $('#workingText').value = ''; state.cmsHistory = []; state.lastTransform = null; renderAll(); } break;
       case 'load-sample': loadSample(); break;
       case 'download-work': exportWork(); break;
       case 'upload-work': $('#workFile').click(); break;
@@ -1063,62 +1304,47 @@
     }
   }
 
-  document.addEventListener('click', (event) => {
+  document.addEventListener('click', event => {
     const control = event.target.closest('[data-action]');
-    if (control) {
-      event.preventDefault();
-      handleAction(control.dataset.action, control);
-      return;
-    }
-    if (!event.target.closest('.copy-wrap')) {
-      $('#copyMenu').hidden = true;
-      $('#copyMenuButton').setAttribute('aria-expanded', 'false');
-    }
+    if (control) { event.preventDefault(); handleAction(control.dataset.action, control); return; }
+    if (!event.target.closest('.copy-wrap')) { $('#copyMenu').hidden = true; $('#copyButton').setAttribute('aria-expanded', 'false'); }
   });
 
-  $('#workingText').addEventListener('input', (event) => {
-    state.working = event.target.value;
-    scheduleWorkingAnalysis();
+  $('#workingText').addEventListener('input', event => { state.working = event.target.value; hideSelectionToolbar(); scheduleAnalysis('working'); });
+  $('#baselineText').addEventListener('input', event => { state.baseline = event.target.value; scheduleAnalysis('baseline'); });
+  $('#projectTitle').addEventListener('input', event => { state.title = event.target.value || '名称未設定の原稿'; persist(); });
+  $('#workingText').addEventListener('mouseup', showSelectionToolbar);
+  $('#workingText').addEventListener('keyup', event => { if (event.shiftKey || ['ArrowLeft', 'ArrowRight'].includes(event.key)) showSelectionToolbar(); });
+  $('#workingText').addEventListener('blur', () => setTimeout(hideSelectionToolbar, 180));
+  $('#searchInput').addEventListener('input', event => { state.search.query = event.target.value; state.search.current = 0; computeSearch(); });
+  $('#workFile').addEventListener('change', event => { const [file] = event.target.files || []; if (file) importWork(file); event.target.value = ''; });
+
+  ['showWhitespace', 'showTags', 'showUrls', 'pendingOnly'].forEach(id => {
+    $(`#${id}`).addEventListener('change', event => {
+      const key = ({ showWhitespace: 'whitespace', showTags: 'tags', showUrls: 'urls', pendingOnly: 'pendingOnly' }[id]);
+      state.display[key] = event.target.checked;
+      renderCompare();
+    });
   });
 
-  $('#baselineText').addEventListener('input', (event) => {
-    state.baseline = event.target.value;
-    scheduleBaselineAnalysis();
-  });
-
-  $('#projectTitle').addEventListener('input', (event) => {
-    state.title = event.target.value || '名称未設定の原稿';
-  });
-
-  $('#workFile').addEventListener('change', (event) => {
-    const [file] = event.target.files || [];
-    if (file) importWork(file);
-    event.target.value = '';
-  });
-
-  document.addEventListener('keydown', (event) => {
+  document.addEventListener('keydown', event => {
     const target = event.target;
-    const isEditing = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || target.isContentEditable;
-    if (isEditing) return;
-    if ($('#auditDialog').open || $('#moreDialog').open) return;
-
+    const editing = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement || target.isContentEditable;
+    if (event.key === 'Escape') hideSelectionToolbar();
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('#commandDialog').showModal(); return; }
+    if (editing) return;
+    if ($('#commandDialog').open || $('#transformDialog').open || $('#patternDialog').open || $('#displayDialog').open || $('#copyConfirmDialog').open || $('#moreDialog').open || $('#auditDialog').open) return;
     if (event.key === 'ArrowRight') { event.preventDefault(); moveCandidate(1); }
     if (event.key === 'ArrowLeft') { event.preventDefault(); moveCandidate(-1); }
-    if (event.key.toLowerCase() === 'a') { event.preventDefault(); actionForActive('accept'); }
-    if (event.key.toLowerCase() === 's') { event.preventDefault(); actionForActive('skip'); }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-      event.preventDefault();
-      if (event.shiftKey) redo(); else undo();
-    }
+    if (event.key.toLowerCase() === 'a') { event.preventDefault(); const active = activeCandidate(); if (active?.type === 'manual' || active?.type === 'editorial') reviewDone(active.id); else if (active?.type === 'style') applyCandidate(active.id); else if (active?.type === 'label') applyLabel(active.id, 'tag'); }
+    if (event.key.toLowerCase() === 's') { event.preventDefault(); const active = activeCandidate(); if (active) skipCandidate(active.id); }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
   });
 
-  $('#auditDialog').addEventListener('click', (event) => {
-    if (event.target === $('#auditDialog')) $('#auditDialog').close();
+  [$('#commandDialog'), $('#transformDialog'), $('#patternDialog'), $('#displayDialog'), $('#copyConfirmDialog'), $('#moreDialog'), $('#auditDialog')].forEach(dialog => {
+    dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
   });
 
-  $('#moreDialog').addEventListener('click', (event) => {
-    if (event.target === $('#moreDialog')) $('#moreDialog').close();
-  });
-
+  hydrate();
   renderAll();
 })();
