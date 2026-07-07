@@ -30,6 +30,12 @@
     notify.timer = window.setTimeout(() => toast.classList.remove('is-visible'), 2600);
   }
 
+  function syncToolbarOffset() {
+    const topbar = $('.topbar');
+    const height = Math.ceil(topbar?.getBoundingClientRect().height || 58);
+    document.documentElement.style.setProperty('--workspace-topbar-height', `${height}px`);
+  }
+
   function installStyle() {
     if ($('#workspaceUiStyle')) return;
     const style = document.createElement('style');
@@ -37,12 +43,10 @@
     style.textContent = `
       .title-field { display:none !important; }
       .workspace-ui-hidden { display:none !important; }
-      .main-stage { min-width:0; }
-      .desk-toolbar { position:sticky !important; top:0; z-index:110; min-height:64px; margin:0 !important; border-top:1px solid #e6ebf2; border-bottom:1px solid #dce3ee; box-shadow:0 8px 18px rgba(29,49,83,.08); background:rgba(255,255,255,.97) !important; backdrop-filter:blur(12px); }
+      .main-stage { min-width:0; overflow:visible !important; }
+      .desk-toolbar { position:sticky !important; top:var(--workspace-topbar-height,58px); z-index:110; min-height:64px; margin:0 !important; border-top:1px solid #e6ebf2; border-bottom:1px solid #dce3ee; box-shadow:0 8px 18px rgba(29,49,83,.08); background:rgba(255,255,255,.97) !important; backdrop-filter:blur(12px); }
       .desk-toolbar::before { content:''; position:absolute; inset:0; z-index:-1; background:rgba(255,255,255,.97); }
       .mode-switch { flex-shrink:0; }
-      .workspace-ui-display-button { min-height:32px; padding:6px 10px; border:1px solid #d5dfef; border-radius:8px; color:#405779; font-size:11px; font-weight:800; background:#fff; }
-      .workspace-ui-display-button:hover { border-color:#b7c8e8; color:#244d9e; background:#f3f6ff; }
       #workspaceDisplayDialog::backdrop { background:rgba(16,29,52,.28); }
       #workspaceDisplayDialog { width:min(460px,calc(100vw - 32px)); padding:0; border:0; border-radius:14px; color:#263550; box-shadow:0 18px 60px rgba(16,29,52,.24); }
       .workspace-display-card { display:grid; gap:14px; padding:18px; background:#fff; }
@@ -64,8 +68,7 @@
       .tag-display-chip { display:inline-flex; max-width:100%; overflow:hidden; padding:2px 5px; border:1px solid #d9d1f0; border-radius:5px; color:#655292; font:600 10px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:nowrap; text-overflow:ellipsis; background:#fbf9ff; }
       .tag-display-context:empty { display:none; }
       @media (max-width:900px) {
-        .desk-toolbar { top:0; padding:8px 10px; }.toolbar-meta .next-action,.toolbar-meta .processing-count,.toolbar-meta .quiet-button { display:none; }
-        .workspace-ui-display-button { padding:6px 8px; }
+        .desk-toolbar { padding:8px 10px; }.toolbar-meta .next-action,.toolbar-meta .processing-count,.toolbar-meta .quiet-button { display:none; }
       }
     `;
     document.head.appendChild(style);
@@ -74,8 +77,7 @@
   function removeDistractions() {
     $('.title-field')?.classList.add('workspace-ui-hidden');
     [...document.querySelectorAll('.control-sidebar .menu-group')].forEach((group) => {
-      const title = group.querySelector('summary strong')?.textContent.trim();
-      if (title === 'こだわり') {
+      if (group.querySelector('summary strong')?.textContent.trim() === 'こだわり') {
         group.classList.add('workspace-ui-hidden');
         group.setAttribute('aria-hidden', 'true');
       }
@@ -105,10 +107,8 @@
       </form>
     `;
     document.body.appendChild(dialog);
-
     dialog.addEventListener('click', (event) => {
-      if (event.target === dialog) dialog.close();
-      if (event.target.closest('[data-workspace-display-close]')) dialog.close();
+      if (event.target === dialog || event.target.closest('[data-workspace-display-close]')) dialog.close();
       if (event.target.closest('[data-workspace-display-apply]')) applyDisplaySettings();
     });
   }
@@ -120,11 +120,13 @@
     $('#workspacePending').checked = Boolean($('#pendingOnly')?.checked || $('#sidePendingOnly')?.checked);
   }
 
-  function setNativeCheckbox(id, value) {
-    const input = $(`#${id}`);
-    if (!input || input.checked === value) return;
-    input.checked = value;
-    input.dispatchEvent(new Event('change', { bubbles:true }));
+  function setNativeCheckboxes(ids, value) {
+    ids.forEach((id) => {
+      const input = $(`#${id}`);
+      if (!input || input.checked === value) return;
+      input.checked = value;
+      input.dispatchEvent(new Event('change', { bubbles:true }));
+    });
   }
 
   function applyDisplaySettings() {
@@ -134,10 +136,10 @@
     const pending = $('#workspacePending').checked;
     showTags = tags;
     writeBoolean(SHOW_TAGS_KEY, tags);
-    setNativeCheckbox('showWhitespace', whitespace);
-    setNativeCheckbox('showUrls', urls);
-    setNativeCheckbox('pendingOnly', pending);
-    setNativeCheckbox('showTags', tags);
+    setNativeCheckboxes(['showWhitespace', 'sideWhitespace'], whitespace);
+    setNativeCheckboxes(['showUrls', 'sideUrls'], urls);
+    setNativeCheckboxes(['pendingOnly', 'sidePendingOnly'], pending);
+    setNativeCheckboxes(['showTags', 'sideTags'], tags);
     $('#workspaceDisplayDialog').close();
     scheduleTagDecoration(true);
     notify('表示設定を反映しました');
@@ -160,11 +162,9 @@
 
   function relevantTags(tokens, start, end) {
     const nearby = [];
-    const PRECEDING_WINDOW = 120;
-    const FOLLOWING_WINDOW = 120;
-    const preceding = tokens.filter(token => token.end <= start && start - token.end <= PRECEDING_WINDOW).slice(-2);
+    const preceding = tokens.filter(token => token.end <= start && start - token.end <= 120).slice(-2);
     const inline = tokens.filter(token => token.start >= start && token.end <= end);
-    const following = tokens.filter(token => token.start >= end && token.start - end <= FOLLOWING_WINDOW).slice(0, 2);
+    const following = tokens.filter(token => token.start >= end && token.start - end <= 120).slice(0, 2);
     [...preceding, ...inline, ...following].forEach((token) => {
       if (!nearby.some(item => item.start === token.start && item.end === token.end)) nearby.push(token);
     });
@@ -182,15 +182,13 @@
     const before = $('#baselineText')?.value || '';
     const after = $('#workingText')?.value || '';
     if (!grid || !window.TextReviewDiffCore?.diffRows) return;
-
     grid.querySelectorAll('.tag-display-context').forEach(node => node.remove());
     if (!showTags) return;
 
-    const options = {
+    const rows = window.TextReviewDiffCore.diffRows(before, after, {
       ignoreHtmlTags: $('#ignoreHtmlTagsToggle')?.checked ?? true,
       ignoreSoftFormatting: $('#ignoreSoftFormattingToggle')?.checked ?? false
-    };
-    const rows = window.TextReviewDiffCore.diffRows(before, after, options).rows || [];
+    }).rows || [];
     const beforeTags = tagTokens(before);
     const afterTags = tagTokens(after);
     decorating = true;
@@ -249,11 +247,13 @@
       }).observe(grid, { childList:true, subtree:false });
     }
 
+    window.addEventListener('resize', syncToolbarOffset, { passive:true });
     window.setInterval(scheduleTagDecoration, 650);
   }
 
   function boot() {
     installStyle();
+    syncToolbarOffset();
     removeDistractions();
     installDisplayDialog();
     bind();
