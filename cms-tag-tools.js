@@ -234,12 +234,22 @@
     loadScript('diff-core-hunk-bridge.js', 'data-hunk-bridge', startRail);
   }
 
+  function loadWorkspaceUi() {
+    if (document.querySelector('script[data-workspace-ui]')) return;
+    const script = document.createElement('script');
+    script.src = 'workspace-ui.js';
+    script.async = false;
+    script.dataset.workspaceUi = 'true';
+    document.head.appendChild(script);
+  }
+
   function boot() {
     configureDifffDefaults();
     installTagCatalog();
     installInspectorStyle();
     installInspector();
     loadDifffRail();
+    loadWorkspaceUi();
 
     document.addEventListener('click', (event) => {
       const tag = event.target.closest('[data-cms-tag]');
