@@ -21,7 +21,16 @@
     hr3: ['区切り線(左右線)', '<hr class="info26__hr3" />']
   };
 
+  const fullwidthCategories = {
+    alphabet: { label: '英字', pattern: /[Ａ-Ｚａ-ｚ]/g },
+    number: { label: '数字', pattern: /[０-９]/g },
+    symbol: { label: '記号', pattern: /[！-／：-＠［-｀｛-～]/g },
+    space: { label: '空白', pattern: /　/g }
+  };
+
   const $ = (selector) => document.querySelector(selector);
+  let activeFullwidthKind = 'all';
+  let currentFullwidthStart = -1;
 
   function notify(message) {
     const toast = $('#toast');
@@ -108,14 +117,142 @@
     basicGrid.insertAdjacentElement('afterend', catalog);
   }
 
+  function installFullwidthInspectorStyle() {
+    if ($('#fullwidthInspectorStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'fullwidthInspectorStyle';
+    style.textContent = `
+      .fullwidth-inspector{display:grid;gap:7px;margin-top:10px;padding:9px 0 0;border-top:1px solid #edf0f5}
+      .fullwidth-inspector-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+      .fullwidth-inspector-head strong{color:#465a7c;font-size:11px}.fullwidth-count{padding:3px 7px;border-radius:999px;color:#81580b;font-size:10px;font-weight:850;background:#fff4db}
+      .fullwidth-status{margin:0;color:#75829a;font-size:10px;line-height:1.55}.fullwidth-status.is-clean{color:#417563}
+      .fullwidth-types{display:flex;flex-wrap:wrap;gap:4px}.fullwidth-types button,.fullwidth-next{border:1px solid #e0e6f0;border-radius:7px;color:#52627e;font-size:10px;font-weight:750;background:#fff}
+      .fullwidth-types button{padding:4px 5px}.fullwidth-types button.is-active{border-color:#c6d6f5;color:#2856aa;background:#eef4ff}.fullwidth-next{padding:6px 7px;text-align:left}.fullwidth-next:disabled{opacity:.55;cursor:not-allowed}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function installFullwidthInspector() {
+    if ($('#fullwidthInspector')) return;
+    const quickCraft = document.querySelector('.quick-craft');
+    if (!quickCraft) return;
+    const panel = document.createElement('section');
+    panel.id = 'fullwidthInspector';
+    panel.className = 'fullwidth-inspector';
+    panel.innerHTML = `
+      <div class="fullwidth-inspector-head"><strong>全角を確認</strong><span id="fullwidthCount" class="fullwidth-count">0件</span></div>
+      <p id="fullwidthStatus" class="fullwidth-status">全角英数・記号・空白を検出します</p>
+      <div id="fullwidthTypes" class="fullwidth-types">
+        <button type="button" data-fullwidth-kind="all">すべて</button>
+        <button type="button" data-fullwidth-kind="alphabet">英字 0</button>
+        <button type="button" data-fullwidth-kind="number">数字 0</button>
+        <button type="button" data-fullwidth-kind="symbol">記号 0</button>
+        <button type="button" data-fullwidth-kind="space">空白 0</button>
+      </div>
+      <button id="fullwidthNext" class="fullwidth-next" type="button">次の全角を選択</button>
+    `;
+    quickCraft.insertAdjacentElement('afterend', panel);
+  }
+
+  function fullwidthMatches(text) {
+    const matches = [];
+    Object.entries(fullwidthCategories).forEach(([kind, category]) => {
+      const pattern = new RegExp(category.pattern.source, 'g');
+      let match;
+      while ((match = pattern.exec(text))) {
+        matches.push({ kind, start: match.index, end: match.index + match[0].length });
+      }
+    });
+    return matches.sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+
+  function renderFullwidthInspector() {
+    const panel = $('#fullwidthInspector');
+    const editor = $('#workingText');
+    if (!panel || !editor) return;
+    panel.hidden = !inEditMode();
+    if (panel.hidden) return;
+
+    const matches = fullwidthMatches(editor.value);
+    const counts = Object.fromEntries(Object.keys(fullwidthCategories).map(kind => [kind, 0]));
+    matches.forEach(match => { counts[match.kind] += 1; });
+
+    const total = matches.length;
+    const badge = $('#fullwidthCount');
+    const status = $('#fullwidthStatus');
+    badge.textContent = `${total}件`;
+    status.classList.toggle('is-clean', total === 0);
+    status.textContent = total
+      ? '日本語の漢字・かなは対象外。英数・記号・全角空白だけを確認します。'
+      : '全角英数・記号・空白は見つかりませんでした。';
+
+    Object.entries(fullwidthCategories).forEach(([kind, category]) => {
+      const item = document.querySelector(`[data-fullwidth-kind="${kind}"]`);
+      if (item) {
+        item.textContent = `${category.label} ${counts[kind]}`;
+        item.classList.toggle('is-active', activeFullwidthKind === kind);
+      }
+    });
+    document.querySelector('[data-fullwidth-kind="all"]')?.classList.toggle('is-active', activeFullwidthKind === 'all');
+
+    const nextButton = $('#fullwidthNext');
+    nextButton.disabled = !total;
+    nextButton.textContent = total ? `次の全角を選択${activeFullwidthKind === 'all' ? '' : `（${fullwidthCategories[activeFullwidthKind].label}）`}` : '検出対象はありません';
+  }
+
+  function selectNextFullwidth() {
+    const editor = $('#workingText');
+    if (!editor || !inEditMode()) return;
+    const matches = fullwidthMatches(editor.value).filter(match => activeFullwidthKind === 'all' || match.kind === activeFullwidthKind);
+    if (!matches.length) return;
+
+    const cursor = editor.selectionEnd;
+    const next = matches.find(match => match.start >= cursor && match.start !== currentFullwidthStart)
+      || matches.find(match => match.start !== currentFullwidthStart)
+      || matches[0];
+
+    currentFullwidthStart = next.start;
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(next.start, next.end);
+    const line = editor.value.slice(0, next.start).split('\n').length;
+    editor.scrollTop = Math.max(0, (line - 4) * 29);
+  }
+
   function boot() {
     installCatalog();
+    installFullwidthInspectorStyle();
+    installFullwidthInspector();
+
     document.addEventListener('click', (event) => {
       const buttonElement = event.target.closest('[data-cms-tag]');
-      if (!buttonElement) return;
-      event.preventDefault();
-      addTag(buttonElement.dataset.cmsTag);
+      if (buttonElement) {
+        event.preventDefault();
+        addTag(buttonElement.dataset.cmsTag);
+        return;
+      }
+
+      const filter = event.target.closest('[data-fullwidth-kind]');
+      if (filter) {
+        activeFullwidthKind = filter.dataset.fullwidthKind;
+        currentFullwidthStart = -1;
+        renderFullwidthInspector();
+        selectNextFullwidth();
+        return;
+      }
+
+      if (event.target.closest('#fullwidthNext')) selectNextFullwidth();
     });
+
+    const editor = $('#workingText');
+    const editButton = $('#editModeButton');
+    const compareButton = $('#compareModeButton');
+    editor?.addEventListener('input', () => {
+      currentFullwidthStart = -1;
+      renderFullwidthInspector();
+    });
+    [editButton, compareButton].filter(Boolean).forEach(button => button.addEventListener('click', () => setTimeout(renderFullwidthInspector, 0)));
+    if (editButton) new MutationObserver(renderFullwidthInspector).observe(editButton, { attributes: true, attributeFilter: ['class'] });
+    renderFullwidthInspector();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
