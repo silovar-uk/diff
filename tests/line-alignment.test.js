@@ -1,7 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const Diff = require('../diff-core.js');
+require('../diff-core.js');
+require('../diff-core-hunk-bridge.js');
+const Diff = globalThis.TextReviewDiffCore;
 
 const strict = { ignoreHtmlTags: true, ignoreSoftFormatting: false };
 
@@ -28,6 +30,19 @@ result = Diff.diffRows(
 assert.deepEqual(result.rows.map(row => row.kind), ['same', 'replace', 'same', 'replace']);
 assert.equal(result.rows[1].before, '旧タイトルです\n');
 assert.equal(result.rows[1].after, '新タイトルです\n');
+
+// A matching blank row must not split the pending hunk. The old and new body
+// paragraphs are separated by a same blank line in the LCS stream, but still
+// need to become one replace pair rather than an unrelated ＋ and −.
+const oldBody = 'この度浦和レッズでは、金武町を巡るスタンプラリーを7月8日から開催することをお知らせいたします。';
+const newBody = 'このたび、浦和レッズは、金武町を巡るスタンプラリーを7月8日から開催することをお知らせいたします。';
+result = Diff.diffRows(`タイトル：\n\n${oldBody}`, `${newBody}\n\n`, strict);
+const bridgedReplace = result.rows.find(row => row.kind === 'replace');
+assert.ok(bridgedReplace, 'the similar body paragraphs should be paired across a blank line');
+assert.equal(bridgedReplace.before, oldBody);
+assert.equal(bridgedReplace.after, `${newBody}\n`);
+assert.ok(result.rows.some(row => row.kind === 'same' && !row.before.trim()), 'the shared blank row remains visible');
+assert.ok(result.rows.some(row => row.kind === 'delete' && row.before === 'タイトル：\n'), 'the unmatched title stays a delete row');
 
 // The hunk aligner must skip an unrelated early line to pair the actually
 // corresponding title line later in the block.
