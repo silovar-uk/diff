@@ -82,7 +82,7 @@
   }
 
   function button(id) {
-    return `<button type="button" data-cms-tag="${id}" title="${tags[id][1]}">${tags[id][0]}</button>`;
+    return `<button type="button" data-cms-tag="${id}">${tags[id][0]}</button>`;
   }
 
   function installCatalog() {
@@ -91,15 +91,9 @@
     if (!basicGrid) return;
 
     const legacyLabel = basicGrid.querySelector('[data-tag="label"]');
-    if (legacyLabel) {
-      legacyLabel.textContent = 'ラベル';
-      legacyLabel.title = tags.label[1];
-    }
+    if (legacyLabel) legacyLabel.textContent = 'ラベル';
     const legacyHeading = basicGrid.querySelector('[data-tag="heading"]');
-    if (legacyHeading) {
-      legacyHeading.textContent = '見出し2';
-      legacyHeading.title = tags.t2[1];
-    }
+    if (legacyHeading) legacyHeading.textContent = '見出し2';
 
     const catalog = document.createElement('div');
     catalog.id = 'cmsTagCatalog';
