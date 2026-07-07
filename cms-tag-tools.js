@@ -89,11 +89,23 @@
     if ($('#cmsTagCatalog')) return;
     const basicGrid = document.querySelector('.tag-grid');
     if (!basicGrid) return;
+
+    const legacyLabel = basicGrid.querySelector('[data-tag="label"]');
+    if (legacyLabel) {
+      legacyLabel.textContent = 'ラベル';
+      legacyLabel.title = tags.label[1];
+    }
+    const legacyHeading = basicGrid.querySelector('[data-tag="heading"]');
+    if (legacyHeading) {
+      legacyHeading.textContent = '見出し2';
+      legacyHeading.title = tags.t2[1];
+    }
+
     const catalog = document.createElement('div');
     catalog.id = 'cmsTagCatalog';
     catalog.innerHTML = `
-      <p class="side-note" style="margin-top:10px;padding-top:9px;border-top:1px solid #edf0f5">サイト用の見出し・ラベル</p>
-      <div class="tag-grid">${button('t1')}${button('t2')}${button('t3')}${button('t3-red')}${button('t3-yellow')}${button('t4')}${button('t4-sq')}${button('t5')}${button('label')}</div>
+      <p class="side-note" style="margin-top:10px;padding-top:9px;border-top:1px solid #edf0f5">サイト用の見出し</p>
+      <div class="tag-grid">${button('t1')}${button('t3')}${button('t3-red')}${button('t3-yellow')}${button('t4')}${button('t4-sq')}${button('t5')}</div>
       <p class="side-note" style="margin-top:10px">レイアウト・写真</p>
       <div class="tag-grid">${button('photo-2col')}${button('photo-3col')}${button('photo-carousel')}${button('bg-white')}${button('bg-gray')}</div>
       <p class="side-note" style="margin-top:10px">区切り線はカーソル位置に挿入</p>
