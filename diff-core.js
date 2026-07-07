@@ -1,9 +1,11 @@
-/* Text Review Studio v0.6.7 – quiet, tag-aware comparison core. */
+/* Text Review Studio v0.6.9 – difff-style, tag-aware comparison core. */
 (function (root) {
   'use strict';
 
   const MAX_LINE_CELLS = 180000;
   const MAX_CHAR_CELLS = 220000;
+  const MAX_HUNK_ALIGNMENT_CELLS = 90000;
+  const DEFAULT_LINE_MATCH_THRESHOLD = 0.34;
   const HTML_TAG_RE = /<\/?[A-Za-z][^>]*>/g;
   const SOFT_FORMATTING_KEY = 'text-review-studio-v067-ignore-soft-formatting';
   const IGNORE_TAGS_KEY = 'text-review-studio-v066-ignore-html-tags';
@@ -24,9 +26,14 @@
       ignoreHtmlTags: typeof options?.ignoreHtmlTags === 'boolean'
         ? options.ignoreHtmlTags
         : hasDom ? browserFlag(IGNORE_TAGS_KEY, true) : false,
+      // difff-style comparison is line-first by default. This toggle is an
+      // explicit relaxation for originals whose manual line wrapping differs.
       ignoreSoftFormatting: typeof options?.ignoreSoftFormatting === 'boolean'
         ? options.ignoreSoftFormatting
-        : hasDom ? browserFlag(SOFT_FORMATTING_KEY, true) : false
+        : hasDom ? browserFlag(SOFT_FORMATTING_KEY, false) : false,
+      lineMatchThreshold: Number.isFinite(options?.lineMatchThreshold)
+        ? Math.min(1, Math.max(0, options.lineMatchThreshold))
+        : DEFAULT_LINE_MATCH_THRESHOLD
     };
   }
 
@@ -139,7 +146,6 @@
   function condenseSoftFormatting(entries) {
     const output = [];
     let index = 0;
-
     const append = (entry) => output.push(entry);
     const trimTrailingSpaces = () => {
       while (output.length && isHorizontalSpace(output[output.length - 1].char)) output.pop();
@@ -193,8 +199,10 @@
   function prepareComparisonText(text, options = {}) {
     const resolved = resolveOptions(options);
     const raw = String(text || '');
-    const base = entriesWithoutTags(raw, resolved.ignoreHtmlTags);
-    const entries = resolved.ignoreSoftFormatting ? condenseSoftFormatting(base) : base.filter(entry => entry.char !== '\r');
+    const withoutTags = entriesWithoutTags(raw, resolved.ignoreHtmlTags);
+    const entries = resolved.ignoreSoftFormatting
+      ? condenseSoftFormatting(withoutTags)
+      : withoutTags.filter(entry => entry.char !== '\r');
     return {
       raw,
       text: entries.map(entry => entry.char).join(''),
@@ -238,6 +246,124 @@
       });
     }
     return units;
+  }
+
+  function normalizeLineForSimilarity(value) {
+    return String(value || '')
+      .replace(/[\r\n]/g, '')
+      .replace(/[ \t　]+/g, ' ')
+      .trim();
+  }
+
+  function bigrams(value) {
+    const characters = Array.from(value);
+    const output = new Map();
+    if (characters.length < 2) return output;
+    for (let index = 0; index < characters.length - 1; index += 1) {
+      const gram = `${characters[index]}${characters[index + 1]}`;
+      output.set(gram, (output.get(gram) || 0) + 1);
+    }
+    return output;
+  }
+
+  /**
+   * Lightweight Dice similarity for line matching within a changed LCS hunk.
+   * It is deliberately independent from the character-level LCS used for
+   * highlighting: this score only decides whether two *rows* deserve ↔.
+   */
+  function lineSimilarity(left, right) {
+    const a = normalizeLineForSimilarity(left);
+    const b = normalizeLineForSimilarity(right);
+    if (a === b) return 1;
+    if (!a || !b) return 0;
+    if (a.length < 2 || b.length < 2) return 0;
+
+    const leftBigrams = bigrams(a);
+    const rightBigrams = bigrams(b);
+    let totalLeft = 0;
+    let totalRight = 0;
+    let intersection = 0;
+    leftBigrams.forEach((count, gram) => {
+      totalLeft += count;
+      if (rightBigrams.has(gram)) intersection += Math.min(count, rightBigrams.get(gram));
+    });
+    rightBigrams.forEach((count) => { totalRight += count; });
+    const total = totalLeft + totalRight;
+    return total ? (2 * intersection) / total : 0;
+  }
+
+  /**
+   * Needleman–Wunsch-style alignment of one changed line block.
+   * Gaps score zero. A diagonal is available only when similarity is at or
+   * above the threshold, so unrelated lines can never become a replace pair
+   * merely because they occupy the same ordinal position in a hunk.
+   */
+  function alignHunk(removed, added, matchThreshold = DEFAULT_LINE_MATCH_THRESHOLD) {
+    const n = removed.length;
+    const m = added.length;
+    if (!n) return added.map(after => ({ before: null, after, similarity: 0 }));
+    if (!m) return removed.map(before => ({ before, after: null, similarity: 0 }));
+
+    // A very large changed block should favour a conservative display over
+    // allocating a large matrix or inventing unreliable row correspondences.
+    if (n * m > MAX_HUNK_ALIGNMENT_CELLS) {
+      return [
+        ...removed.map(before => ({ before, after: null, similarity: 0 })),
+        ...added.map(after => ({ before: null, after, similarity: 0 }))
+      ];
+    }
+
+    const score = Array.from({ length: n + 1 }, () => new Float32Array(m + 1));
+    const back = Array.from({ length: n + 1 }, () => new Uint8Array(m + 1));
+    const similarities = Array.from({ length: n }, () => new Float32Array(m));
+    const DIAGONAL = 1;
+    const UP = 2;
+    const LEFT = 3;
+
+    for (let index = 1; index <= n; index += 1) back[index][0] = UP;
+    for (let index = 1; index <= m; index += 1) back[0][index] = LEFT;
+
+    for (let i = 1; i <= n; i += 1) {
+      for (let j = 1; j <= m; j += 1) {
+        const similarity = lineSimilarity(removed[i - 1].text, added[j - 1].text);
+        similarities[i - 1][j - 1] = similarity;
+        const diagonal = similarity >= matchThreshold
+          ? score[i - 1][j - 1] + (similarity - matchThreshold + 0.0001)
+          : Number.NEGATIVE_INFINITY;
+        const up = score[i - 1][j];
+        const left = score[i][j - 1];
+
+        if (diagonal >= up && diagonal >= left) {
+          score[i][j] = diagonal;
+          back[i][j] = DIAGONAL;
+        } else if (up >= left) {
+          score[i][j] = up;
+          back[i][j] = UP;
+        } else {
+          score[i][j] = left;
+          back[i][j] = LEFT;
+        }
+      }
+    }
+
+    const pairs = [];
+    let i = n;
+    let j = m;
+    while (i > 0 || j > 0) {
+      const move = i > 0 && j > 0 ? back[i][j] : (i > 0 ? UP : LEFT);
+      if (move === DIAGONAL) {
+        pairs.push({ before: removed[i - 1], after: added[j - 1], similarity: similarities[i - 1][j - 1] });
+        i -= 1;
+        j -= 1;
+      } else if (move === UP) {
+        pairs.push({ before: removed[i - 1], after: null, similarity: 0 });
+        i -= 1;
+      } else {
+        pairs.push({ before: null, after: added[j - 1], similarity: 0 });
+        j -= 1;
+      }
+    }
+    return pairs.reverse();
   }
 
   function classifySeverity(before, after) {
@@ -325,9 +451,9 @@
       after: afterUnits[afterIndex]?.rawStart ?? afterPrepared.raw.length
     });
 
-    const addRow = (kind, beforeUnit, afterUnit) => {
+    const addRow = (kind, beforeUnit, afterUnit, position = anchors()) => {
       const id = kind === 'same' ? `same-${++sameCount}` : `diff-${++changeCount}`;
-      const row = makeRow(kind, beforeUnit, afterUnit, id, anchors());
+      const row = makeRow(kind, beforeUnit, afterUnit, id, position);
       rows.push(row);
       if (kind !== 'same') {
         hunks.push({
@@ -348,11 +474,14 @@
     while (operationIndex < operations.length) {
       const operation = operations[operationIndex];
       if (operation.type === 'same') {
-        for (let count = 0; count < operation.values.length; count += 1) addRow('same', beforeUnits[beforeIndex++], afterUnits[afterIndex++]);
+        for (let count = 0; count < operation.values.length; count += 1) {
+          addRow('same', beforeUnits[beforeIndex++], afterUnits[afterIndex++]);
+        }
         operationIndex += 1;
         continue;
       }
 
+      const hunkPosition = anchors();
       const removed = [];
       const added = [];
       while (operationIndex < operations.length && operations[operationIndex].type !== 'same') {
@@ -365,10 +494,13 @@
         operationIndex += 1;
       }
 
-      const paired = Math.min(removed.length, added.length);
-      for (let count = 0; count < paired; count += 1) addRow('replace', removed[count], added[count]);
-      for (let count = paired; count < removed.length; count += 1) addRow('delete', removed[count], null);
-      for (let count = paired; count < added.length; count += 1) addRow('insert', null, added[count]);
+      // A changed LCS block is not automatically a list of replacement pairs.
+      // Align only semantically similar rows; emit all other rows as + / −.
+      for (const pair of alignHunk(removed, added, beforePrepared.options.lineMatchThreshold)) {
+        if (pair.before && pair.after) addRow('replace', pair.before, pair.after, hunkPosition);
+        else if (pair.before) addRow('delete', pair.before, null, hunkPosition);
+        else addRow('insert', null, pair.after, hunkPosition);
+      }
     }
 
     return {
@@ -395,10 +527,21 @@
     return parts.filter(part => part.type !== 'remove').map(part => part.value).join('');
   }
 
-  const api = { diffText, diffRows, prepareComparisonText, reconstructBefore, reconstructAfter, _lcsDiff: lcsDiff };
+  const api = {
+    diffText,
+    diffRows,
+    prepareComparisonText,
+    reconstructBefore,
+    reconstructAfter,
+    _lcsDiff: lcsDiff,
+    _lineSimilarity: lineSimilarity,
+    _alignHunk: alignHunk
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.TextReviewDiffCore = api;
 
+  // app.js was originally built against a broader static shell. Keep these
+  // silent anchors so the comparison engine stays independent of page chrome.
   function ensureCompatibilityAnchors() {
     if (typeof document === 'undefined' || !document.body) return;
     const add = (parent, markup) => parent.insertAdjacentHTML('beforeend', markup);
@@ -422,146 +565,8 @@
     if (audit && !document.querySelector('#auditGrid')) add(audit, '<div id="auditGrid"></div>');
   }
 
-  function installCompareView() {
-    if (typeof document === 'undefined') return;
-    const $ = selector => document.querySelector(selector);
-    const before = $('#baselineText');
-    const after = $('#workingText');
-    const left = $('#baselineCompare');
-    const right = $('#afterCompare');
-    const gutter = $('#gutterMap');
-    const compareButton = $('#compareModeButton');
-    const editButton = $('#editModeButton');
-    const optionsBox = $('#compareOptions');
-    if (!before || !after || !left || !right || !gutter || !compareButton || !editButton || !optionsBox) return;
-
-    let timer = 0;
-    let syncing = false;
-    let painting = false;
-
-    const tagToggle = $('#ignoreHtmlTagsToggle');
-    let formatToggle = $('#ignoreSoftFormattingToggle');
-    if (!formatToggle) {
-      const label = document.createElement('label');
-      label.className = 'compare-option';
-      label.innerHTML = '<input id="ignoreSoftFormattingToggle" type="checkbox" /><span class="compare-option-label">行末空白・折り返しを無視</span><small>単一改行と行末空白は比較しない</small>';
-      optionsBox.appendChild(label);
-      formatToggle = $('#ignoreSoftFormattingToggle');
-    }
-    tagToggle.checked = browserFlag(IGNORE_TAGS_KEY, true);
-    formatToggle.checked = browserFlag(SOFT_FORMATTING_KEY, true);
-
-    const optionState = () => ({ ignoreHtmlTags: tagToggle.checked, ignoreSoftFormatting: formatToggle.checked });
-    const isCompare = () => compareButton.classList.contains('is-active');
-    const escape = value => String(value || '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-    const withoutTerminalBreak = value => String(value || '').replace(/\n+$/, '');
-
-    function inline(row, side) {
-      return row.parts.map(part => {
-        if (side === 'before' && part.type === 'add') return '';
-        if (side === 'after' && part.type === 'remove') return '';
-        const text = withoutTerminalBreak(part.value);
-        if (!text) return '';
-        if (part.type === 'same') return escape(text);
-        return side === 'before'
-          ? `<span class="source-diff source-diff-remove">${escape(text)}</span>`
-          : `<mark class="cms-diff cms-diff-add">${escape(text)}</mark>`;
-      }).join('') || '&nbsp;';
-    }
-
-    function alignRows() {
-      const leftRows = [...left.querySelectorAll('.quiet-compare-row')];
-      const rightRows = [...right.querySelectorAll('.quiet-compare-row')];
-      const gutterRows = [...gutter.querySelectorAll('.quiet-gutter-row')];
-      for (let index = 0; index < leftRows.length; index += 1) {
-        const height = Math.max(31, Math.ceil(leftRows[index].getBoundingClientRect().height), Math.ceil(rightRows[index]?.getBoundingClientRect().height || 0));
-        leftRows[index].style.minHeight = `${height}px`;
-        if (rightRows[index]) rightRows[index].style.minHeight = `${height}px`;
-        if (gutterRows[index]) gutterRows[index].style.minHeight = `${height}px`;
-      }
-    }
-
-    function paint() {
-      if (!isCompare()) {
-        optionsBox.hidden = true;
-        return;
-      }
-      optionsBox.hidden = false;
-      const result = diffRows(before.value, after.value, optionState());
-      painting = true;
-      left.innerHTML = result.rows.map(row => `<div class="compare-row quiet-compare-row" data-quiet-row="${escape(row.id)}">${inline(row, 'before')}</div>`).join('');
-      right.innerHTML = result.rows.map(row => `<div class="compare-row quiet-compare-row" data-quiet-row="${escape(row.id)}">${inline(row, 'after')}</div>`).join('');
-      gutter.innerHTML = result.rows.map(row => {
-        const symbol = row.kind === 'replace' ? '↔' : row.kind === 'insert' ? '+' : row.kind === 'delete' ? '−' : '';
-        const kind = row.kind === 'insert' ? 'add' : row.kind === 'delete' ? 'remove' : row.kind === 'replace' ? 'replace' : 'same';
-        return `<div class="quiet-gutter-row"><button class="gutter-marker ${kind}" data-quiet-jump="${escape(row.id)}" aria-label="${symbol ? '該当差分へ移動' : '一致'}">${symbol}</button></div>`;
-      }).join('');
-      left.hidden = false;
-      right.hidden = false;
-      requestAnimationFrame(() => {
-        alignRows();
-        painting = false;
-      });
-    }
-
-    const schedule = () => {
-      clearTimeout(timer);
-      timer = setTimeout(paint, 45);
-    };
-
-    function storeAndPaint() {
-      try {
-        localStorage.setItem(IGNORE_TAGS_KEY, String(tagToggle.checked));
-        localStorage.setItem(SOFT_FORMATTING_KEY, String(formatToggle.checked));
-      } catch (_) {}
-      paint();
-    }
-
-    tagToggle.addEventListener('change', storeAndPaint);
-    formatToggle.addEventListener('change', storeAndPaint);
-    before.addEventListener('input', schedule);
-    after.addEventListener('input', schedule);
-    compareButton.addEventListener('click', () => setTimeout(paint, 0));
-    editButton.addEventListener('click', () => setTimeout(paint, 0));
-
-    const observer = new MutationObserver(() => {
-      if (!painting && isCompare()) schedule();
-    });
-    observer.observe(left, { childList: true });
-    observer.observe(right, { childList: true });
-
-    function syncScroll(source) {
-      if (syncing) return;
-      syncing = true;
-      const top = source.scrollTop;
-      [left, right, gutter].forEach(node => { if (node && node !== source) node.scrollTop = top; });
-      requestAnimationFrame(() => { syncing = false; });
-    }
-    left.addEventListener('scroll', () => syncScroll(left), { passive: true });
-    right.addEventListener('scroll', () => syncScroll(right), { passive: true });
-    gutter.addEventListener('click', event => {
-      const button = event.target.closest('[data-quiet-jump]');
-      if (!button) return;
-      const id = button.dataset.quietJump;
-      document.querySelectorAll('[data-quiet-row], [data-quiet-jump]').forEach(node => node.classList.toggle('is-active', node.dataset.quietRow === id || node.dataset.quietJump === id));
-      right.querySelector(`[data-quiet-row="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-
-    const style = document.createElement('style');
-    style.textContent = `
-      .compare-options:not([hidden]){display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 12px;padding:8px 11px;border:1px solid #d8deea;border-radius:9px;background:#fff;color:#53627e;font-size:12px}
-      .compare-option{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-weight:750}.compare-option small{font-size:10px;color:#7b8aa2;font-weight:500}.compare-option input{accent-color:#3967d8}
-      .quiet-compare-row{white-space:pre-wrap;overflow-wrap:anywhere}.quiet-compare-row.is-active{box-shadow:inset 3px 0 0 #17725a}
-      .quiet-gutter-row{display:grid;place-items:center;min-height:31px}.quiet-gutter-row .gutter-marker.same{border:0;background:transparent;pointer-events:none}.quiet-gutter-row .gutter-marker.is-active{outline:2px solid rgba(57,103,216,.32);outline-offset:1px}
-    `;
-    document.head.appendChild(style);
-    paint();
-  }
-
   if (typeof document !== 'undefined') {
-    ensureCompatibilityAnchors();
-    const start = () => setTimeout(installCompareView, 0);
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-    else start();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureCompatibilityAnchors, { once: true });
+    else ensureCompatibilityAnchors();
   }
 })(typeof window !== 'undefined' ? window : globalThis);
