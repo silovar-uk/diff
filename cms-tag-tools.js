@@ -21,61 +21,97 @@
     hr3: ['区切り線(左右線)', '<hr class="info26__hr3" />']
   };
 
-  const notify = (message) => {
-    const toast = document.querySelector('#toast');
+  const $ = (selector) => document.querySelector(selector);
+
+  function notify(message) {
+    const toast = $('#toast');
     if (!toast) return;
     toast.textContent = message;
     toast.classList.add('is-visible');
     clearTimeout(notify.timer);
     notify.timer = setTimeout(() => toast.classList.remove('is-visible'), 2600);
-  };
+  }
 
-  function addTag(id) {
-    const definition = tags[id];
-    const editor = document.querySelector('#workingText');
-    if (!definition || !editor) return;
-    if (!document.querySelector('#editModeButton')?.classList.contains('is-active')) {
-      notify('CMSタグは「原稿を編集」で追加できます');
-      return;
-    }
+  function inEditMode() {
+    return $('#editModeButton')?.classList.contains('is-active');
+  }
 
-    const [label, opening, closing] = definition;
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    let next = editor.value;
-    let selectionStart = start;
-    let selectionEnd = start;
-
-    if (closing) {
-      const selected = editor.value.slice(start, end);
-      if (!selected) {
-        notify(`${label}を付ける文字・HTMLを選択してください`);
-        return;
-      }
-      const replacement = `${opening}${selected}${closing}`;
-      next = `${editor.value.slice(0, start)}${replacement}${editor.value.slice(end)}`;
-      selectionEnd = start + replacement.length;
-    } else {
-      const before = editor.value.slice(0, start);
-      const after = editor.value.slice(start);
-      const prefix = before && !before.endsWith('\n') ? '\n' : '';
-      const suffix = after && !after.startsWith('\n') ? '\n' : '';
-      const insertion = `${prefix}${opening}${suffix}`;
-      next = `${before}${insertion}${after}`;
-      selectionStart = start + insertion.length;
-      selectionEnd = selectionStart;
-    }
-
-    editor.value = next;
-    editor.focus({ preventScroll: true });
-    editor.setSelectionRange(selectionStart, selectionEnd);
+  function dispatchInput(editor) {
     editor.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  document.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-cms-tag]');
-    if (!button) return;
-    event.preventDefault();
-    addTag(button.dataset.cmsTag);
-  });
+  function insertDivider(editor, markup) {
+    const cursor = editor.selectionStart;
+    const before = editor.value.slice(0, cursor);
+    const after = editor.value.slice(cursor);
+    const prefix = before && !before.endsWith('\n') ? '\n' : '';
+    const suffix = after && !after.startsWith('\n') ? '\n' : '';
+    const insertion = `${prefix}${markup}${suffix}`;
+    editor.value = `${before}${insertion}${after}`;
+    const position = cursor + insertion.length;
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(position, position);
+    dispatchInput(editor);
+  }
+
+  function wrapSelection(editor, tag) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const selected = editor.value.slice(start, end);
+    if (!selected) {
+      notify(`${tag[0]}を付ける文字・HTMLを選択してください`);
+      return;
+    }
+    const replacement = `${tag[1]}${selected}${tag[2]}`;
+    editor.value = `${editor.value.slice(0, start)}${replacement}${editor.value.slice(end)}`;
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(start, start + replacement.length);
+    dispatchInput(editor);
+  }
+
+  function addTag(id) {
+    const tag = tags[id];
+    const editor = $('#workingText');
+    if (!tag || !editor) return;
+    if (!inEditMode()) {
+      notify('CMSタグは「原稿を編集」で追加できます');
+      return;
+    }
+    if (tag.length === 2) insertDivider(editor, tag[1]);
+    else wrapSelection(editor, tag);
+  }
+
+  function button(id) {
+    return `<button type="button" data-cms-tag="${id}" title="${tags[id][1]}">${tags[id][0]}</button>`;
+  }
+
+  function installCatalog() {
+    if ($('#cmsTagCatalog')) return;
+    const basicGrid = document.querySelector('.tag-grid');
+    if (!basicGrid) return;
+    const catalog = document.createElement('div');
+    catalog.id = 'cmsTagCatalog';
+    catalog.innerHTML = `
+      <p class="side-note" style="margin-top:10px;padding-top:9px;border-top:1px solid #edf0f5">サイト用の見出し・ラベル</p>
+      <div class="tag-grid">${button('t1')}${button('t2')}${button('t3')}${button('t3-red')}${button('t3-yellow')}${button('t4')}${button('t4-sq')}${button('t5')}${button('label')}</div>
+      <p class="side-note" style="margin-top:10px">レイアウト・写真</p>
+      <div class="tag-grid">${button('photo-2col')}${button('photo-3col')}${button('photo-carousel')}${button('bg-white')}${button('bg-gray')}</div>
+      <p class="side-note" style="margin-top:10px">区切り線はカーソル位置に挿入</p>
+      <div class="tag-grid">${button('hr1')}${button('hr2')}${button('hr3')}</div>
+    `;
+    basicGrid.insertAdjacentElement('afterend', catalog);
+  }
+
+  function boot() {
+    installCatalog();
+    document.addEventListener('click', (event) => {
+      const buttonElement = event.target.closest('[data-cms-tag]');
+      if (!buttonElement) return;
+      event.preventDefault();
+      addTag(buttonElement.dataset.cmsTag);
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
 })();
