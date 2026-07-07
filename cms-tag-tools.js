@@ -28,9 +28,13 @@
     space: { label: '空白', pattern: /　/g }
   };
 
+  const DIFFF_SOFT_FORMAT_KEY = 'text-review-studio-v067-ignore-soft-formatting';
+  const DIFFF_DEFAULTS_KEY = 'text-review-studio-v068-difff-defaults';
+
   const $ = (selector) => document.querySelector(selector);
   let activeFullwidthKind = 'all';
   let currentFullwidthStart = -1;
+  const statsCache = { baseline: null, working: null };
 
   function notify(message) {
     const toast = $('#toast');
@@ -128,6 +132,7 @@
       .fullwidth-status{margin:0;color:#75829a;font-size:10px;line-height:1.55}.fullwidth-status.is-clean{color:#417563}
       .fullwidth-types{display:flex;flex-wrap:wrap;gap:4px}.fullwidth-types button,.fullwidth-next{border:1px solid #e0e6f0;border-radius:7px;color:#52627e;font-size:10px;font-weight:750;background:#fff}
       .fullwidth-types button{padding:4px 5px}.fullwidth-types button.is-active{border-color:#c6d6f5;color:#2856aa;background:#eef4ff}.fullwidth-next{padding:6px 7px;text-align:left}.fullwidth-next:disabled{opacity:.55;cursor:not-allowed}
+      #baselineStats,#workingStats{display:none}.difff-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-top:1px;border-top:1px solid #e6ebf2;background:#e6ebf2}.difff-stat{display:grid;gap:2px;min-width:0;padding:7px 9px;background:#fbfcfe}.difff-stat span{overflow:hidden;color:#7b88a1;font-size:9px;font-weight:750;line-height:1.2;white-space:nowrap;text-overflow:ellipsis}.difff-stat strong{color:#31415f;font-size:12px;font-variant-numeric:tabular-nums;line-height:1.1}@media(max-width:1100px){.difff-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:720px){.difff-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.difff-stat{padding:6px 7px}.difff-stat span{font-size:8px}.difff-stat strong{font-size:11px}}
     `;
     document.head.appendChild(style);
   }
@@ -218,10 +223,75 @@
     editor.scrollTop = Math.max(0, (line - 4) * 29);
   }
 
+  function configureDifffDefaults() {
+    try {
+      if (localStorage.getItem(DIFFF_DEFAULTS_KEY) !== '1') {
+        localStorage.setItem(DIFFF_SOFT_FORMAT_KEY, 'false');
+        localStorage.setItem(DIFFF_DEFAULTS_KEY, '1');
+      }
+    } catch (_) {}
+  }
+
+  function textMetrics(value) {
+    const text = String(value || '').replace(/\r/g, '');
+    const withoutNewlines = text.replace(/\n/g, '');
+    const withoutWhitespace = withoutNewlines.replace(/\s/g, '');
+    const characters = Array.from(withoutWhitespace).length;
+    const withSpaces = Array.from(withoutNewlines).length;
+    const withNewlines = Array.from(text).length;
+    const spaces = withSpaces - characters;
+    const lineBreaks = withNewlines - withSpaces;
+    const words = text.trim() ? (text.match(/\S+/g) || []).length : 0;
+    return { characters, spaces, withSpaces, lineBreaks, withNewlines, words };
+  }
+
+  function statisticCell(label, value) {
+    return `<div class="difff-stat"><span>${label}</span><strong>${Number(value).toLocaleString('ja-JP')}</strong></div>`;
+  }
+
+  function installDifffStats() {
+    [['baseline', '.before-pane'], ['working', '.after-pane']].forEach(([key, paneSelector]) => {
+      const pane = document.querySelector(paneSelector);
+      const footer = pane?.querySelector('.pane-footer');
+      if (!pane || !footer || $(`#difffStats-${key}`)) return;
+      const stats = document.createElement('section');
+      stats.id = `difffStats-${key}`;
+      stats.className = 'difff-stats';
+      stats.setAttribute('aria-label', key === 'baseline' ? '変更前の文字数情報' : '修正後の文字数情報');
+      footer.insertAdjacentElement('afterend', stats);
+    });
+  }
+
+  function renderDifffStats(force = false) {
+    const pairs = [
+      ['baseline', '#baselineText'],
+      ['working', '#workingText']
+    ];
+    pairs.forEach(([key, editorSelector]) => {
+      const editor = $(editorSelector);
+      const target = $(`#difffStats-${key}`);
+      if (!editor || !target) return;
+      const value = editor.value || '';
+      if (!force && statsCache[key] === value) return;
+      statsCache[key] = value;
+      const stats = textMetrics(value);
+      target.innerHTML = [
+        statisticCell('文字数', stats.characters),
+        statisticCell('空白数', stats.spaces),
+        statisticCell('空白込み', stats.withSpaces),
+        statisticCell('改行数', stats.lineBreaks),
+        statisticCell('改行込み', stats.withNewlines),
+        statisticCell('単語数', stats.words)
+      ].join('');
+    });
+  }
+
   function boot() {
+    configureDifffDefaults();
     installCatalog();
     installFullwidthInspectorStyle();
     installFullwidthInspector();
+    installDifffStats();
 
     document.addEventListener('click', (event) => {
       const buttonElement = event.target.closest('[data-cms-tag]');
@@ -241,18 +311,27 @@
       }
 
       if (event.target.closest('#fullwidthNext')) selectNextFullwidth();
+      window.setTimeout(renderDifffStats, 0);
     });
 
     const editor = $('#workingText');
+    const baseline = $('#baselineText');
     const editButton = $('#editModeButton');
     const compareButton = $('#compareModeButton');
     editor?.addEventListener('input', () => {
       currentFullwidthStart = -1;
       renderFullwidthInspector();
+      renderDifffStats();
     });
-    [editButton, compareButton].filter(Boolean).forEach(button => button.addEventListener('click', () => setTimeout(renderFullwidthInspector, 0)));
+    baseline?.addEventListener('input', renderDifffStats);
+    [editButton, compareButton].filter(Boolean).forEach(button => button.addEventListener('click', () => setTimeout(() => {
+      renderFullwidthInspector();
+      renderDifffStats();
+    }, 0)));
     if (editButton) new MutationObserver(renderFullwidthInspector).observe(editButton, { attributes: true, attributeFilter: ['class'] });
+    window.setInterval(renderDifffStats, 700);
     renderFullwidthInspector();
+    renderDifffStats(true);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
