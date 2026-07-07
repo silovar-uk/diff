@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/app-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
-  <title>Text Review Studio — v0.6.3</title>
+  <title>Text Review Studio — v0.6.6</title>
 </head>
 <body>
   <div class="app-shell">
@@ -35,7 +35,6 @@
       <div class="top-actions">
         <button class="icon-button" data-action="undo" id="undoButton" title="元に戻す (⌘Z)" aria-label="元に戻す" disabled>↶</button>
         <button class="icon-button" data-action="redo" id="redoButton" title="やり直す (⌘⇧Z)" aria-label="やり直す" disabled>↷</button>
-        
         <div class="copy-wrap">
           <button class="primary-button" id="copyButton" data-action="toggle-copy-menu" aria-expanded="false" disabled>コピー <span>⌄</span></button>
           <div id="copyMenu" class="copy-menu" hidden>
@@ -50,7 +49,6 @@
     </header>
 
     <main class="workspace">
-
       <div class="workspace-layout">
         <aside class="control-sidebar" aria-label="校正・CMS操作">
           <section class="sidebar-start-hint" id="sidebarStartHint" aria-live="polite">
@@ -77,8 +75,11 @@
                   <button data-action="left-quick-search" data-query=" ">半角空白</button>
                   <button data-action="left-quick-search" data-query="！">全角！</button>
                   <button data-action="left-quick-search" data-query="!">半角!</button>
+                  <button data-action="left-quick-search" data-query="（">全角（</button>
+                  <button data-action="left-quick-search" data-query="）">全角）</button>
                   <button data-action="left-quick-search" data-query="【">【】</button>
                   <button data-action="left-quick-search" data-query="https://">URL</button>
+                  <button data-action="left-quick-search" data-query="、[ \t]*$" data-regex="true">文末の、</button>
                 </div>
                 <button class="side-row-button" data-action="open-search"><span>検索・置換を開く</span><b>→</b></button>
               </section>
@@ -154,275 +155,174 @@
             </div>
           </details>
         </aside>
+
         <section class="main-stage">
-
-      <section class="desk-toolbar" aria-label="表示・編集操作">
-        <div class="mode-switch" role="group" aria-label="表示モード">
-          <button id="editModeButton" class="is-active" data-action="set-mode" data-mode="edit">原稿を編集</button>
-          <button id="compareModeButton" data-action="set-mode" data-mode="compare">左右で比較</button>
-        </div>
-        <div class="toolbar-meta">
-          <span id="nextAction" class="next-action">まず、左右に原稿を貼ります</span><span id="processingCount" class="processing-count">CMS加工 0件</span>
-          <button class="quiet-button" data-action="toggle-ghost" id="ghostButton" disabled>加工前を重ねて表示</button>
-          <button class="quiet-button" data-action="toggle-display-settings">表示</button>
-        </div>
-      </section>
-
-      <section class="workspace-guidance" id="workspaceGuidance" aria-live="polite" hidden>
-        <div id="compareStartHint" class="compare-start-hint" hidden>
-          <span class="guidance-symbol" aria-hidden="true">↔</span>
-          <div><strong>差分の準備</strong><span>両方を入力すると、ここで差分を確認できます</span></div>
-        </div>
-        <div id="diffLegend" class="diff-legend" hidden>
-          <button class="diff-legend-close" data-action="close-diff-legend" aria-label="差分の見方を閉じる">×</button>
-          <strong>差分の見方</strong>
-          <p><i class="legend-before">赤い文字</i>：変更前にだけある表現</p>
-          <p><i class="legend-after">緑マーカー</i>：修正後に加わった表現</p>
-          <p><b>↔</b>：置換　<b>＋</b>：追加　<b>−</b>：削除</p>
-        </div>
-      </section>
-
-      <section class="review-desk" id="reviewDesk">
-        <section class="split-workspace" aria-label="左右比較ワークスペース">
-          <article class="document-pane before-pane">
-            <header class="pane-header">
-              <div>
-                <p class="eyebrow">BEFORE</p>
-                <h1>変更前 <span>比較専用</span></h1>
-              </div>
-              <div class="pane-tools">
-                <button class="quiet-button" data-action="paste-baseline">貼り付け</button>
-                <button class="quiet-button danger" data-action="clear-baseline">消去</button>
-              </div>
-            </header>
-            <div class="pane-body">
-              <textarea id="baselineText" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
-              <div id="baselineEmptyState" class="pane-empty-state" hidden>
-                <span class="empty-step">1</span>
-                <strong id="baselineEmptyTitle">変更前の原稿を貼る</strong>
-                <p id="baselineEmptyText">比較したい元の文章を、ここに貼り付けます。</p>
-                <div><button class="secondary-button" data-action="paste-baseline">貼り付け</button><button class="quiet-button" data-action="focus-baseline">ここに入力</button></div>
-              </div>
-              <div id="baselineCompare" class="compare-surface" hidden></div>
+          <section class="desk-toolbar" aria-label="表示・編集操作">
+            <div class="mode-switch" role="group" aria-label="表示モード">
+              <button id="editModeButton" class="is-active" data-action="set-mode" data-mode="edit">原稿を編集</button>
+              <button id="compareModeButton" data-action="set-mode" data-mode="compare">左右で比較</button>
             </div>
-            <footer class="pane-footer"><span id="baselineStats">0文字・0行</span><span>比較専用</span></footer>
-          </article>
-
-          <section class="diff-gutter" aria-label="差分ガター">
-            <div class="gutter-head"><button class="diff-legend-toggle" data-action="toggle-diff-legend" aria-controls="diffLegend" aria-expanded="false" title="差分の見方">?</button></div>
-            <div id="gutterMap" class="gutter-map"></div>
-          </section>
-
-          <article class="document-pane after-pane">
-            <header class="pane-header">
-              <div>
-                <p class="eyebrow">AFTER</p>
-                <h1>修正後 <span>CMS作業版として加工できます</span></h1>
-              </div>
-              <div class="pane-tools">
-                <button class="quiet-button" data-action="paste-working">貼り付け</button>
-                <button class="quiet-button danger" data-action="clear-working">消去</button>
-              </div>
-            </header>
-            <div class="search-bar" id="searchBar" hidden>
-              <span>検索</span>
-              <input id="searchInput" placeholder="文字列・記号を探す" aria-label="検索" />
-              <span id="searchCount" class="search-count">0件</span>
-              <button class="mini-button" data-action="search-prev" title="前へ">←</button>
-              <button class="mini-button" data-action="search-next" title="次へ">→</button>
-              <button class="mini-button" data-action="toggle-replace">置換</button>
-              <button class="icon-button small" data-action="close-search" aria-label="検索を閉じる">×</button>
-              <div class="quick-searches" aria-label="よく使う検索">
-                <button data-action="quick-search" data-query="　">全角スペース</button>
-                <button data-action="quick-search" data-query=" ">半角スペース</button>
-                <button data-action="quick-search" data-query="！">全角！</button>
-                <button data-action="quick-search" data-query="!">半角!</button>
-                <button data-action="quick-search" data-query="【">【】</button>
-                <button data-action="quick-search" data-query="https://">URL</button>
-                <button data-action="quick-search" data-query="<span">タグ</button>
-              </div>
-              <div id="replaceControls" class="replace-controls" hidden>
-                <input id="replaceInput" placeholder="置換後" aria-label="置換後" />
-                <label><input id="replaceProtect" type="checkbox" checked /> URL・タグを保護</label>
-                <button class="mini-button" data-action="replace-one">1件置換</button>
-                <button class="mini-button strong" data-action="replace-all">すべて置換</button>
-              </div>
+            <div class="compare-options" id="compareOptions" hidden>
+              <label class="compare-option" title="&lt;span&gt; や &lt;table&gt; など、&lt;&gt;で囲まれた英字タグは本文比較の対象から外します。本文そのものの変更だけを見ます。">
+                <input id="ignoreHtmlTagsToggle" type="checkbox" checked />
+                <span class="compare-option-label">タグを無視</span>
+                <small>&lt;&gt;の英字タグを本文比較から外す</small>
+              </label>
             </div>
-            <div class="after-content">
-              <div id="selectionToolbar" class="selection-toolbar" hidden aria-label="選択範囲へのタグ付け">
-                <span class="selection-toolbar-label">選択中の文字に付ける</span>
-                <button data-action="wrap-selection" data-tag="label">ラベル</button>
-                <button data-action="wrap-selection" data-tag="heading">中見出し</button>
-                <button data-action="wrap-selection" data-tag="note">注意</button>
-                <button data-action="wrap-selection" data-tag="strong">強調</button>
-                <button data-action="wrap-selection" data-tag="link">リンク</button>
-              </div>
-              <div class="pane-body working-body">
-              <textarea id="workingText" class="editor working-editor" spellcheck="false" placeholder="修正後の原稿を貼り付け。ここがCMS作業版として育ちます。"></textarea>
-              <div id="workingEmptyState" class="pane-empty-state pane-empty-state--after" hidden>
-                <span class="empty-step">2</span>
-                <strong id="workingEmptyTitle">修正後の原稿を貼る</strong>
-                <p id="workingEmptyText">比較する修正後の文章を、ここに貼り付けます。</p>
-                <div><button class="secondary-button" data-action="paste-working">貼り付け</button><button class="quiet-button" data-action="focus-working">ここに入力</button></div>
-              </div>
-                <div id="afterCompare" class="compare-surface" hidden></div>
-              </div>
-            </div>
-            <footer class="pane-footer"><span id="workingStats">0文字・0行</span><span id="workingMeta">URL 0件・HTMLタグ 0件</span></footer>
-          </article>
-        </section>
-
-        <aside class="review-rail" id="reviewRail" aria-label="確認キュー">
-          <button class="rail-summary" data-action="toggle-review-rail" aria-expanded="false" aria-controls="reviewPanel">
-            <span class="rail-label">確認</span>
-            <strong id="railTotal">0件</strong>
-            <span id="railSub" class="rail-sub">入力待ち</span>
-          </button>
-          <div class="rail-dots" id="railDots"></div>
-          <div id="reviewRailHint" class="rail-hint" hidden>確認する項目はこちら<button data-action="close-rail-hint" aria-label="閉じる">×</button></div>
-
-          <section class="review-panel" id="reviewPanel" hidden>
-            <header class="review-panel-head">
-              <div><p class="eyebrow">REVIEW QUEUE</p><h2>確認すること</h2></div>
-              <button class="icon-button small" data-action="toggle-review-rail" aria-label="閉じる">×</button>
-            </header>
-            <div class="review-counts" id="reviewCounts"></div>
-            <section id="activeReview" class="active-review"></section>
-            <details class="queue-list-wrap">
-              <summary>確認一覧を開く <span id="queueListCount"></span></summary>
-              <div id="queueList" class="queue-list"></div>
-            </details>
-          </section>
-        </aside>
-      </section>
-
-      <section class="desk-footer" aria-label="補助機能">
-        <button data-action="toggle-output-settings" id="outputSettingsButton">HTML・出力設定</button>
-        <button data-action="toggle-history" id="historyButton">CMS加工履歴</button>
-        <button data-action="toggle-exceptions" id="exceptionsButton">例外一覧</button>
-        <button data-action="open-audit">全体比較</button>
-        <span class="shortcut-hint"><kbd>A</kbd> 判断　<kbd>S</kbd> 保留　<kbd>←</kbd><kbd>→</kbd> 移動</span>
-      </section>
-
-      <section id="outputSettings" class="bottom-drawer" hidden>
-        <header class="drawer-head">
-          <div><p class="eyebrow">OUTPUT SETTINGS</p><h2>HTML・出力設定</h2><p>CMS作業版は変えず、コピー時の出力だけを調整します。</p></div>
-          <button class="icon-button" data-action="toggle-output-settings" aria-label="閉じる">×</button>
-        </header>
-        <div class="settings-grid">
-          <section class="setting-card">
-            <h3>既存HTMLタグ</h3>
-            <p>すでに原稿に含まれるHTMLタグの出力方針。</p>
-            <div class="segmented" data-group="tag-policy">
-              <button data-action="set-tag-policy" data-value="keep">保持</button>
-              <button data-action="set-tag-policy" data-value="unwrap">タグだけ外す</button>
+            <div class="toolbar-meta">
+              <span id="nextAction" class="next-action">まず、左右に原稿を貼ります</span><span id="processingCount" class="processing-count">CMS加工 0件</span>
+              <button class="quiet-button" data-action="toggle-ghost" id="ghostButton" disabled>加工前を重ねて表示</button>
+              <button class="quiet-button" data-action="toggle-display-settings">表示</button>
             </div>
           </section>
-          <section class="setting-card">
-            <h3>【ラベル】表記</h3>
-            <p>未加工の【項目名】を出力時にどう扱うか。</p>
-            <div class="segmented wrap" data-group="label-policy">
-              <button data-action="set-label-policy" data-value="tag">タグ化</button>
-              <button data-action="set-label-policy" data-value="plain">かっこを外す</button>
-              <button data-action="set-label-policy" data-value="keep">そのまま</button>
-            </div>
-          </section>
-          <section class="setting-card">
-            <h3>改行</h3>
-            <p>CMSの入力欄に合わせて変換。</p>
-            <div class="segmented wrap" data-group="line-policy">
-              <button data-action="set-line-policy" data-value="keep">そのまま</button>
-              <button data-action="set-line-policy" data-value="br">brに変換</button>
-              <button data-action="set-line-policy" data-value="paragraph">段落化</button>
-            </div>
-          </section>
-          <section class="setting-card">
-            <h3>URL</h3>
-            <p>URL文字列をリンクにするか。</p>
-            <div class="segmented" data-group="link-policy">
-              <button data-action="set-link-policy" data-value="raw">文字列のまま</button>
-              <button data-action="set-link-policy" data-value="anchor">リンク化</button>
-            </div>
-          </section>
-        </div>
-        <section class="output-preview-card">
-          <div class="output-preview-head"><div><span class="panel-label">現在の出力</span><strong>掲載用HTML</strong></div><button class="secondary-button" data-action="request-copy" data-copy-type="html">HTMLをコピー</button></div>
-          <pre id="outputPreview" class="output-preview"></pre>
-        </section>
-      </section>
 
-      <section id="historyDrawer" class="bottom-drawer" hidden>
-        <header class="drawer-head">
-          <div><p class="eyebrow">CMS HISTORY</p><h2>CMS加工履歴</h2><p>操作単位で、どこを変えたかを確認・Undoできます。</p></div>
-          <button class="icon-button" data-action="toggle-history" aria-label="閉じる">×</button>
-        </header>
-        <div id="historyList" class="history-list"></div>
-      </section>
-      <section id="exceptionsDrawer" class="bottom-drawer" hidden>
-        <header class="drawer-head">
-          <div><p class="eyebrow">EXCEPTIONS</p><h2>例外・個別の作法</h2><p>「今回は残す」ではなく、今後も維持したい表記をここで管理します。</p></div>
-          <button class="icon-button" data-action="toggle-exceptions" aria-label="閉じる">×</button>
-        </header>
-        <div id="exceptionList" class="exception-list"></div>
-      </section>
+          <section class="workspace-guidance" id="workspaceGuidance" aria-live="polite" hidden>
+            <div id="compareStartHint" class="compare-start-hint" hidden>
+              <span class="guidance-symbol" aria-hidden="true">↔</span>
+              <div><strong>差分の準備</strong><span>両方を入力すると、ここで差分を確認できます</span></div>
+            </div>
+            <div id="diffLegend" class="diff-legend" hidden>
+              <button class="diff-legend-close" data-action="close-diff-legend" aria-label="差分の見方を閉じる">×</button>
+              <strong>差分の見方</strong>
+              <p><i class="legend-before">赤い文字</i>：変更前にだけある表現</p>
+              <p><i class="legend-after">緑マーカー</i>：修正後に加わった表現</p>
+              <p><b>↔</b>：置換　<b>＋</b>：追加　<b>−</b>：削除</p>
+            </div>
+          </section>
+
+          <section class="review-desk" id="reviewDesk">
+            <section class="split-workspace" aria-label="左右比較ワークスペース">
+              <article class="document-pane before-pane">
+                <header class="pane-header">
+                  <div>
+                    <p class="eyebrow">BEFORE</p>
+                    <h1>変更前 <span>比較専用</span></h1>
+                  </div>
+                  <div class="pane-tools">
+                    <button class="quiet-button" data-action="paste-baseline">貼り付け</button>
+                    <button class="quiet-button danger" data-action="clear-baseline">消去</button>
+                  </div>
+                </header>
+                <div class="pane-body">
+                  <textarea id="baselineText" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
+                  <div id="baselineEmptyState" class="pane-empty-state" hidden>
+                    <span class="empty-step">1</span>
+                    <strong id="baselineEmptyTitle">変更前の原稿を貼る</strong>
+                    <p id="baselineEmptyDescription">公開前・修正前など、比較したい原稿をここへ貼り付けます。</p>
+                  </div>
+                  <div id="baselineCompare" class="compare-surface" hidden></div>
+                </div>
+                <footer class="pane-footer"><span id="baselineStats">0文字 / 0行</span><span>比較元</span></footer>
+              </article>
+
+              <aside class="diff-gutter" aria-label="差分一覧">
+                <div class="gutter-head">差分</div>
+                <div class="gutter-map" id="gutterMap"></div>
+              </aside>
+
+              <article class="document-pane after-pane">
+                <header class="pane-header">
+                  <div>
+                    <p class="eyebrow">AFTER</p>
+                    <h1>修正後 <span>CMS作業版</span></h1>
+                  </div>
+                  <div class="pane-tools">
+                    <button class="quiet-button" data-action="paste-working">貼り付け</button>
+                    <button class="quiet-button danger" data-action="clear-working">消去</button>
+                  </div>
+                </header>
+                <div class="after-content">
+                  <div id="selectionToolbar" class="selection-toolbar" hidden>
+                    <span id="selectionToolbarText">選択中の文字にタグを付ける</span>
+                    <div class="selection-toolbar-actions">
+                      <button data-action="wrap-selection" data-tag="label">ラベル</button>
+                      <button data-action="wrap-selection" data-tag="heading">見出し</button>
+                      <button data-action="wrap-selection" data-tag="note">注意</button>
+                      <button data-action="wrap-selection" data-tag="strong">強調</button>
+                      <button data-action="wrap-selection" data-tag="link">リンク</button>
+                    </div>
+                  </div>
+                  <div class="pane-body">
+                    <textarea id="workingText" class="editor working-editor" spellcheck="false" placeholder="修正後の原稿を貼り付け、またはここで作業"></textarea>
+                    <div id="workingEmptyState" class="pane-empty-state" hidden>
+                      <span class="empty-step">2</span>
+                      <strong id="workingEmptyTitle">修正後の原稿を貼る</strong>
+                      <p id="workingEmptyDescription">CMS貼り付け用の原稿を入れると、ここから整えられます。</p>
+                    </div>
+                    <div id="afterCompare" class="compare-surface" hidden></div>
+                  </div>
+                </div>
+                <footer class="pane-footer"><span id="workingStats">0文字 / 0行</span><span>CMS作業版</span></footer>
+              </article>
+            </section>
+
+            <aside class="review-rail" id="reviewRail" aria-label="確認キュー">
+              <button class="review-rail-button" data-action="toggle-rail" aria-expanded="false">
+                <span>確認</span>
+                <strong id="railCount">0件</strong>
+                <small id="railCritical"></small>
+              </button>
+              <div class="rail-hint" id="reviewRailHint" hidden>
+                <strong>確認項目</strong>
+                <span>未確認の差分・表記・HTMLをここへ集約します。</span>
+                <button data-action="close-rail-hint" aria-label="閉じる">×</button>
+              </div>
+            </aside>
+
+            <aside class="review-panel" id="reviewPanel" hidden>
+              <header class="drawer-head">
+                <div><p class="eyebrow">REVIEW QUEUE</p><h2>確認が必要な項目</h2></div>
+                <button class="icon-button" data-action="toggle-rail" aria-label="確認キューを閉じる">×</button>
+              </header>
+              <div class="review-summary" id="reviewSummary"></div>
+              <div class="review-list" id="reviewList"></div>
+            </aside>
+          </section>
         </section>
       </div>
     </main>
   </div>
 
-  <dialog id="commandDialog" class="dialog command-dialog">
-    <form method="dialog" class="dialog-card command-card">
-      <header class="drawer-head compact"><div><p class="eyebrow">COMMAND</p><h2>何をしますか？</h2></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
-      <div class="command-grid">
-        <button data-action="open-search"><strong>検索する</strong><span>文字列・記号・タグを探す</span></button>
-        <button data-action="open-transform" data-recipe="space"><strong>空白を整える</strong><span>全角／半角・連続空白・行末空白</span></button>
-        <button data-action="open-transform" data-recipe="symbol"><strong>記号を統一する</strong><span>！ ？ （ ）などを整える</span></button>
-        <button data-action="open-transform" data-recipe="notation"><strong>表記をそろえる</strong><span>様々・予め・精一杯など</span></button>
-        <button data-action="open-transform" data-recipe="newline"><strong>改行を整える</strong><span>空行や改行コードを整理する</span></button>
-        <button data-action="open-pattern-tags"><strong>パターンでタグを付ける</strong><span>【】・URL・注記行を一括処理</span></button>
-        <button data-action="unwrap-working-tags"><strong>HTMLタグを外す</strong><span>タグだけ外して文字は残す</span></button>
-        <button data-action="open-display-settings"><strong>表示を調整する</strong><span>空白・改行・タグ・URLを見える化</span></button>
+  <dialog id="commandDialog" class="dialog">
+    <form method="dialog" class="dialog-card compact-dialog">
+      <header class="drawer-head compact"><div><p class="eyebrow">COMMAND</p><h2>操作パレット</h2></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
+      <div class="command-list">
+        <button data-action="open-search"><strong>検索・置換</strong><span>文字列、記号、正規表現</span></button>
+        <button data-action="open-transform" data-recipe="space"><strong>空白を整える</strong><span>全角・連続・行末</span></button>
+        <button data-action="open-transform" data-recipe="symbol"><strong>記号を統一</strong><span>！ ？ かっこ</span></button>
+        <button data-action="open-transform" data-recipe="notation"><strong>表記を統一</strong><span>よく使う語句</span></button>
+        <button data-action="open-pattern-tags"><strong>パターンでタグ付け</strong><span>見出し・ラベル・URL</span></button>
       </div>
     </form>
   </dialog>
 
   <dialog id="transformDialog" class="dialog">
-    <form method="dialog" class="dialog-card transform-card">
-      <header class="drawer-head compact"><div><p class="eyebrow">PREVIEW</p><h2 id="transformTitle">文章を整える</h2><p id="transformSummary"></p></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
-      <div id="transformExamples" class="transform-examples"></div>
-      <div class="dialog-actions"><button class="secondary-button" value="cancel">戻る</button><button class="primary-button" id="applyTransformButton" data-action="apply-pending-transform">反映</button></div>
+    <form method="dialog" class="dialog-card">
+      <header class="drawer-head"><div><p class="eyebrow" id="transformEyebrow">TRANSFORM</p><h2 id="transformTitle">整形を確認</h2></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
+      <p id="transformDescription"></p>
+      <div id="transformPreview" class="transform-preview"></div>
+      <div class="dialog-actions"><button class="secondary-button" value="cancel">戻る</button><button class="primary-button" data-action="confirm-transform">反映する</button></div>
     </form>
   </dialog>
 
   <dialog id="patternDialog" class="dialog">
     <form method="dialog" class="dialog-card">
-      <header class="drawer-head compact"><div><p class="eyebrow">PATTERN TAG</p><h2>パターンでタグを付ける</h2></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
-      <div class="pattern-options">
-        <button data-action="preview-pattern" data-pattern="brackets">【】で囲まれた短い行をラベル化</button>
-        <button data-action="preview-pattern" data-pattern="urls">URLをリンク化</button>
-        <button data-action="preview-pattern" data-pattern="notes">行頭の※注記を注意書きタグ化</button>
-      </div>
-      <section id="patternPreview" class="pattern-preview"><p>対象を選ぶと、変更件数と例が出ます。</p></section>
-      <div class="dialog-actions"><button class="secondary-button" value="cancel">閉じる</button><button class="primary-button" id="applyPatternButton" data-action="apply-pending-transform" disabled>反映</button></div>
+      <header class="drawer-head"><div><p class="eyebrow">PATTERN TAG</p><h2>パターンで一括タグ付け</h2></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
+      <label class="field"><span>対象パターン</span><input id="patternInput" placeholder="例：^【(.+?)】$" /></label>
+      <label class="field"><span>タグ種類</span><select id="patternTag"><option value="label">ラベル</option><option value="heading">中見出し</option><option value="note">注意</option><option value="strong">強調</option></select></label>
+      <p class="dialog-help">正規表現で行単位に置換します。HTMLタグやURL内は対象外です。</p>
+      <div class="dialog-actions"><button class="secondary-button" value="cancel">戻る</button><button class="primary-button" data-action="apply-pattern-tags">反映する</button></div>
     </form>
   </dialog>
 
   <dialog id="displayDialog" class="dialog">
     <form method="dialog" class="dialog-card compact-dialog">
-      <header class="drawer-head compact"><div><p class="eyebrow">DISPLAY</p><h2>表示</h2><p>本文はそのまま。必要な情報だけ重ねます。</p></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
-      <label class="check-row"><input type="checkbox" id="showWhitespace" /> <span><strong>空白・改行を見える化</strong><small>半角スペース：·　全角スペース：□　改行：↵</small></span></label>
-      <label class="check-row"><input type="checkbox" id="showTags" /> <span><strong>HTMLタグを強調</strong><small>タグを淡い紫で表示</small></span></label>
-      <label class="check-row"><input type="checkbox" id="showUrls" /> <span><strong>URL・メールを強調</strong><small>リンク候補を青い下線で表示</small></span></label>
-      <label class="check-row"><input type="checkbox" id="pendingOnly" /> <span><strong>未確認の変更を優先表示</strong><small>共通部分を薄くして、確認対象に視線を寄せる</small></span></label>
-      <div class="dialog-actions"><button class="primary-button" value="default">完了</button></div>
+      <header class="drawer-head compact"><div><p class="eyebrow">DISPLAY</p><h2>表示レイヤー</h2></div><button class="icon-button" value="cancel" aria-label="閉じる">×</button></header>
+      <label class="check-row"><input type="checkbox" id="showWhitespace" /><span><strong>空白・改行を見える化</strong><small>空白を·、改行を↵で表示します。</small></span></label>
+      <label class="check-row"><input type="checkbox" id="showTags" /><span><strong>HTMLタグを強調</strong><small>タグだけを紫で表示します。</small></span></label>
+      <label class="check-row"><input type="checkbox" id="showUrls" /><span><strong>URL・メールを強調</strong><small>リンクとメールを青で表示します。</small></span></label>
+      <label class="check-row"><input type="checkbox" id="pendingOnly" /><span><strong>未確認だけを優先表示</strong><small>確認済み項目を薄くします。</small></span></label>
     </form>
-  </dialog>
-
-  <dialog id="auditDialog" class="dialog audit-dialog">
-    <div class="dialog-card audit-card">
-      <header class="drawer-head"><div><p class="eyebrow">FINAL REVIEW</p><h2>全体比較</h2><p>日常作業ではなく、最終監査用の4カラムビューです。</p></div><button class="icon-button" data-action="close-audit" aria-label="閉じる">×</button></header>
-      <div id="auditGrid" class="audit-grid"></div>
-    </div>
   </dialog>
 
   <dialog id="copyConfirmDialog" class="dialog">
