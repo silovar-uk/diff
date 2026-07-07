@@ -203,13 +203,35 @@
     } catch (_) {}
   }
 
-  function loadDifffRail() {
-    if (document.querySelector('script[data-difff-rail-view]')) return;
+  function loadScript(source, marker, onReady) {
+    const existing = document.querySelector(`script[${marker}]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') onReady();
+      else existing.addEventListener('load', onReady, { once: true });
+      return;
+    }
     const script = document.createElement('script');
-    script.src = 'difff-rail-view.js';
-    script.defer = true;
-    script.dataset.difffRailView = 'true';
+    script.src = source;
+    script.async = false;
+    script.dataset[marker.replace(/^data-/, '').replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = 'true';
+    script.addEventListener('load', () => {
+      script.dataset.loaded = 'true';
+      onReady();
+    }, { once: true });
+    script.addEventListener('error', onReady, { once: true });
     document.head.appendChild(script);
+  }
+
+  function loadDifffRail() {
+    const startRail = () => {
+      if (document.querySelector('script[data-difff-rail-view]')) return;
+      const script = document.createElement('script');
+      script.src = 'difff-rail-view.js';
+      script.async = false;
+      script.dataset.difffRailView = 'true';
+      document.head.appendChild(script);
+    };
+    loadScript('diff-core-hunk-bridge.js', 'data-hunk-bridge', startRail);
   }
 
   function boot() {
