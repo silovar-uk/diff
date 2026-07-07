@@ -1,17 +1,20 @@
 /*
- * Text Review Studio v0.4.0
- * Local-only, dependency-free two-stage diff core.
+ * Text Review Studio v0.6.6
+ * Local-only, dependency-free diff core.
  *
- * Design goals:
- * - Never duplicate tokens in reconstruction.
- * - Keep long documents responsive by diffing line blocks first.
- * - Assign stable hunk IDs to changed blocks for rendering and review.
+ * Two views are intentionally supported:
+ * - diffText(): raw source diff for audit/review records.
+ * - diffRows(): difff-style paired rows for the side-by-side comparison view.
+ *   It diffs line sequences first, then makes inline character diffs inside each
+ *   paired changed row. When requested, HTML-like tags are removed from the
+ *   comparison stream so class/style/font markup cannot overwhelm prose changes.
  */
 (function (root) {
   'use strict';
 
   const MAX_LINE_CELLS = 220000;
   const MAX_CHAR_CELLS = 240000;
+  const HTML_TAG_RE = /<\/?[A-Za-z][^>]*>/g;
 
   function compact(parts) {
     const out = [];
@@ -57,10 +60,6 @@
     return parts;
   }
 
-  /**
-   * LCS diff. For oversized matrices, preserves shared prefix/suffix and treats
-   * the middle as a single replace block. That is less granular, but still exact.
-   */
   function lcsDiff(a, b, maxCells) {
     const n = a.length;
     const m = b.length;
@@ -94,7 +93,7 @@
       if (a[i] === b[j]) {
         push('same', a[i]);
         i += 1;
-        j += 1; // Critical: move both sides. Prevents duplicate additions.
+        j += 1;
       } else if (dp[at(i + 1, j)] >= dp[at(i, j + 1)]) {
         push('remove', a[i]);
         i += 1;
@@ -116,9 +115,7 @@
 
   function classifySeverity(before, after) {
     const combined = `${before}${after}`;
-    if (/(https?:\/\/|www\.|@[\w.-]+\.|<\/?[A-Za-z][^>]*>|[0-9０-９]+\s*(年|月|日|時|分|円|%|％)|\b(?:AM|PM)\b)/i.test(combined)) {
-      return 'critical';
-    }
+    if (/(https?:\/\/|www\.|@[\w.-]+\.|<\/?[A-Za-z][^>]*>|[0-9０-９]+\s*(年|月|日|時|分|円|%|％)|\b(?:AM|PM)\b)/i.test(combined)) return 'critical';
     if (/^[\s\n\r\t、。,.!！?？()（）\[\]【】「」『』]+$/u.test(combined)) return 'minor';
     return 'normal';
   }
@@ -197,21 +194,127 @@
       const hunkId = `diff-${hunkCounter + 1}`;
       hunkCounter += 1;
       const kind = removed && added ? 'replace' : removed ? 'delete' : 'insert';
-      hunks.push({
-        id: hunkId,
-        kind,
-        before: removed,
-        after: added,
-        beforeStart: startBefore,
-        beforeEnd: startBefore + removed.length,
-        afterStart: startAfter,
-        afterEnd: startAfter + added.length,
-        severity: classifySeverity(removed, added)
-      });
+      hunks.push({ id: hunkId, kind, before: removed, after: added, beforeStart: startBefore, beforeEnd: startBefore + removed.length, afterStart: startAfter, afterEnd: startAfter + added.length, severity: classifySeverity(removed, added) });
       parts.push(...diffChangedBlock(removed, added, hunkId, startBefore, startAfter));
     }
 
     return { parts: compact(parts), hunks };
+  }
+
+  function prepareComparisonText(text, options = {}) {
+    const raw = String(text || '');
+    if (!options.ignoreHtmlTags) {
+      return { raw, text: raw, map: Array.from({ length: raw.length }, (_, index) => index) };
+    }
+
+    let out = '';
+    const map = [];
+    let cursor = 0;
+    const matcher = new RegExp(HTML_TAG_RE.source, 'g');
+    let match;
+    while ((match = matcher.exec(raw))) {
+      for (let index = cursor; index < match.index; index += 1) {
+        out += raw[index];
+        map.push(index);
+      }
+      cursor = match.index + match[0].length;
+    }
+    for (let index = cursor; index < raw.length; index += 1) {
+      out += raw[index];
+      map.push(index);
+    }
+    return { raw, text: out, map };
+  }
+
+  function rawOffsetAt(prepared, normalizedOffset) {
+    if (!prepared.text.length) return 0;
+    if (normalizedOffset <= 0) return prepared.map[0] ?? 0;
+    if (normalizedOffset >= prepared.text.length) return prepared.raw.length;
+    return prepared.map[normalizedOffset] ?? prepared.raw.length;
+  }
+
+  function splitLineEntries(prepared) {
+    const lines = splitLines(prepared.text);
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    let offset = 0;
+    return lines.map((text, index) => {
+      const start = offset;
+      const end = start + text.length;
+      offset = end;
+      return { text, normalizedStart: start, normalizedEnd: end, rawStart: rawOffsetAt(prepared, start), rawEnd: rawOffsetAt(prepared, end), index };
+    });
+  }
+
+  function makeRow(kind, beforeEntry, afterEntry, id, anchors = {}) {
+    const before = beforeEntry?.text || '';
+    const after = afterEntry?.text || '';
+    const beforeStart = beforeEntry?.rawStart ?? anchors.before ?? 0;
+    const beforeEnd = beforeEntry?.rawEnd ?? beforeStart;
+    const afterStart = afterEntry?.rawStart ?? anchors.after ?? 0;
+    const afterEnd = afterEntry?.rawEnd ?? afterStart;
+    const parts = kind === 'same'
+      ? [{ type: 'same', value: before, hunkId: null, beforeStart, afterStart }]
+      : diffChangedBlock(before, after, id, beforeStart, afterStart);
+    return { id, kind, before, after, beforeStart, beforeEnd, afterStart, afterEnd, severity: kind === 'same' ? 'minor' : classifySeverity(before, after), parts };
+  }
+
+  function diffRows(beforeText, afterText, options = {}) {
+    const beforePrepared = prepareComparisonText(beforeText, options);
+    const afterPrepared = prepareComparisonText(afterText, options);
+    const beforeLines = splitLineEntries(beforePrepared);
+    const afterLines = splitLineEntries(afterPrepared);
+    const lineOps = lcsDiff(beforeLines.map(line => line.text), afterLines.map(line => line.text), MAX_LINE_CELLS);
+
+    const rows = [];
+    const hunks = [];
+    let beforeIndex = 0;
+    let afterIndex = 0;
+    let rowCounter = 0;
+    let hunkCounter = 0;
+    const anchors = () => ({ before: beforeLines[beforeIndex]?.rawStart ?? beforePrepared.raw.length, after: afterLines[afterIndex]?.rawStart ?? afterPrepared.raw.length });
+    const addChangedRow = (kind, beforeEntry, afterEntry) => {
+      hunkCounter += 1;
+      const id = `compare-diff-${hunkCounter}`;
+      const row = makeRow(kind, beforeEntry, afterEntry, id, anchors());
+      rows.push(row);
+      hunks.push({ id, kind, before: row.before, after: row.after, beforeStart: row.beforeStart, beforeEnd: row.beforeEnd, afterStart: row.afterStart, afterEnd: row.afterEnd, severity: row.severity });
+    };
+
+    let opIndex = 0;
+    while (opIndex < lineOps.length) {
+      const op = lineOps[opIndex];
+      if (op.type === 'same') {
+        for (let count = 0; count < op.values.length; count += 1) {
+          const beforeEntry = beforeLines[beforeIndex++];
+          const afterEntry = afterLines[afterIndex++];
+          rowCounter += 1;
+          rows.push(makeRow('same', beforeEntry, afterEntry, `compare-same-${rowCounter}`, anchors()));
+        }
+        opIndex += 1;
+        continue;
+      }
+
+      const removed = [];
+      const added = [];
+      while (opIndex < lineOps.length && lineOps[opIndex].type !== 'same') {
+        const changed = lineOps[opIndex];
+        if (changed.type === 'remove') {
+          for (let count = 0; count < changed.values.length; count += 1) removed.push(beforeLines[beforeIndex++]);
+        } else {
+          for (let count = 0; count < changed.values.length; count += 1) added.push(afterLines[afterIndex++]);
+        }
+        opIndex += 1;
+      }
+
+      const paired = Math.min(removed.length, added.length);
+      for (let index = 0; index < paired; index += 1) addChangedRow('replace', removed[index], added[index]);
+      for (let index = paired; index < removed.length; index += 1) addChangedRow('delete', removed[index], null);
+      for (let index = paired; index < added.length; index += 1) addChangedRow('insert', null, added[index]);
+    }
+
+    const parts = [];
+    rows.forEach(row => parts.push(...row.parts));
+    return { rows, hunks, parts: compact(parts), before: beforePrepared.text, after: afterPrepared.text, ignoredTags: Boolean(options.ignoreHtmlTags) };
   }
 
   function reconstructBefore(parts) {
@@ -222,13 +325,7 @@
     return parts.filter(part => part.type !== 'remove').map(part => part.value).join('');
   }
 
-  const api = {
-    diffText,
-    reconstructBefore,
-    reconstructAfter,
-    _lcsDiff: lcsDiff
-  };
-
+  const api = { diffText, diffRows, prepareComparisonText, reconstructBefore, reconstructAfter, _lcsDiff: lcsDiff };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.TextReviewDiffCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
