@@ -1,15 +1,18 @@
 /*
- * Text Review Studio – changed-hunk alignment patch.
+ * Text Review Studio – CMS-aware changed-hunk alignment patch.
  *
- * Keeps the public TextReviewDiffCore API intact while replacing only the
- * row-alignment stage. It is loaded after diff-core.js and before the grid view.
+ * Replaces TextReviewDiffCore.diffRows() after diff-core.js is loaded.
+ * The patch models each line as a Unit with display text, comparison text and
+ * semantic type so CMS markup, visual bullets, blank rows and assets do not
+ * distort row matching.
  */
 (function (root) {
   'use strict';
 
   const core = root.TextReviewDiffCore;
-  if (!core || typeof core.prepareComparisonText !== 'function' || typeof core._lcsDiff !== 'function') return;
+  if (!core || typeof core._lcsDiff !== 'function') return;
 
+  const MAX_LINE_CELLS = 180000;
   const MAX_CHAR_CELLS = 220000;
   const MAX_HUNK_ALIGNMENT_CELLS = 90000;
   const DEFAULT_THRESHOLD = 0.34;
@@ -26,37 +29,125 @@
     return output;
   }
 
-  function rawOffsetAt(prepared, offset) {
-    if (!prepared.text.length) return 0;
-    if (offset <= 0) return prepared.map[0] ?? 0;
-    if (offset >= prepared.text.length) return prepared.raw.length;
-    return prepared.map[offset] ?? prepared.raw.length;
+  function stripTags(value) {
+    return String(value || '').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<\/?[A-Za-z][^>]*>/g, '');
   }
 
-  function splitUnits(prepared) {
-    const text = prepared.text;
-    if (!text) return [];
-    const separator = prepared.options.ignoreSoftFormatting ? /\n{2,}/g : /\n/g;
+  function decodeEntities(value) {
+    const input = String(value || '');
+    const named = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“' };
+    return input.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, body) => {
+      const key = body.toLowerCase();
+      if (key[0] === '#') {
+        const code = key[1] === 'x' ? Number.parseInt(key.slice(2), 16) : Number.parseInt(key.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      }
+      return Object.prototype.hasOwnProperty.call(named, key) ? named[key] : match;
+    });
+  }
+
+  function normalizeSpaces(value) {
+    return String(value || '').replace(/\u00a0/g, ' ').replace(/[ \t　]+/g, ' ').trim();
+  }
+
+  function removeOuterCmsSpan(value) {
+    const line = String(value || '');
+    const match = line.match(/^\s*<span\s+class=["']([^"']*)["'][^>]*>([\s\S]*?)<\/span>\s*$/i);
+    if (!match) return null;
+    return { className: match[1], inner: match[2] };
+  }
+
+  function classifyRawLine(rawLine) {
+    const line = String(rawLine || '').replace(/\r?\n$/, '');
+    const trimmed = line.trim();
+    if (!trimmed) return { type: 'blank', subtype: '', structural: true };
+
+    const span = removeOuterCmsSpan(trimmed);
+    if (span) {
+      if (/\binfo(?:24|26)-t[1-5]\b/.test(span.className)) return { type: 'heading', subtype: span.className, structural: false };
+      if (/\binfo24-label\b/.test(span.className)) return { type: 'label', subtype: span.className, structural: false };
+    }
+
+    if (/^<img\b/i.test(trimmed)) return { type: 'asset', subtype: 'image', structural: true };
+    if (/^<\/?div\b/i.test(trimmed)) return { type: 'layout', subtype: 'div', structural: true };
+    if (/^<hr\b/i.test(trimmed)) return { type: 'layout', subtype: 'hr', structural: true };
+    if (/^<a\b/i.test(trimmed) || /^https?:\/\/\S+$/i.test(trimmed)) return { type: 'link', subtype: 'url', structural: false };
+    if (/^[◆◇♢■□●○◎・▶︎▶▸▹]\s*\S/.test(trimmed)) return { type: 'heading', subtype: 'bullet-heading', structural: false };
+    if (/^【[^】]{1,60}】\s*$/.test(trimmed) || /^≪[^≫]{1,60}≫\s*$/.test(trimmed)) return { type: 'heading', subtype: 'bracket-heading', structural: false };
+    if (/^＜[^＞]{1,60}＞\s*$/.test(trimmed) || /^<[^>\n]{1,60}>\s*$/.test(trimmed)) return { type: 'label', subtype: 'bracket-label', structural: false };
+    return { type: 'text', subtype: '', structural: false };
+  }
+
+  function displayText(rawLine, meta) {
+    const hasNewline = /\n$/.test(rawLine);
+    const end = hasNewline ? '\n' : '';
+    const body = String(rawLine || '').replace(/\r?\n$/, '');
+    const trimmed = body.trim();
+    if (meta.type === 'asset' || meta.type === 'layout') return `${trimmed}${end}`;
+    if (meta.type === 'blank') return end || body;
+    return `${decodeEntities(stripTags(body))}${end}`;
+  }
+
+  function compareText(rawLine, meta, options = {}) {
+    if (meta.structural || meta.type === 'blank') return '';
+    let text = String(rawLine || '').replace(/\r?\n$/, '');
+
+    if (options.ignoreHtmlTags !== false) text = stripTags(text);
+    else {
+      const span = removeOuterCmsSpan(text.trim());
+      if (span && (meta.type === 'heading' || meta.type === 'label')) text = stripTags(text);
+    }
+
+    text = decodeEntities(text);
+    text = text
+      .replace(/^[◆◇♢■□●○◎・▶︎▶▸▹]\s*/, '')
+      .replace(/^【([^】]{1,80})】\s*$/, '$1')
+      .replace(/^≪([^≫]{1,80})≫\s*$/, '$1')
+      .replace(/^＜([^＞]{1,80})＞\s*$/, '$1')
+      .replace(/^<([^>\n]{1,80})>\s*$/, '$1');
+
+    return normalizeSpaces(text);
+  }
+
+  function buildUnits(rawText, options = {}, side = 'before') {
+    const raw = String(rawText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const units = [];
     let start = 0;
-    let match;
-    while ((match = separator.exec(text))) {
-      const end = match.index + match[0].length;
-      units.push({ text: text.slice(start, end), rawStart: rawOffsetAt(prepared, start), rawEnd: rawOffsetAt(prepared, end) });
-      start = end;
-    }
-    if (start < text.length) {
-      units.push({ text: text.slice(start), rawStart: rawOffsetAt(prepared, start), rawEnd: rawOffsetAt(prepared, text.length) });
-    }
-    return units;
-  }
+    let primaryIndex = 0;
 
-  function isBlankUnit(value) {
-    return !value || !String(value).trim();
+    const pushLine = (end) => {
+      const rawLine = raw.slice(start, end);
+      const meta = classifyRawLine(rawLine);
+      const text = displayText(rawLine, meta);
+      const unit = {
+        side,
+        allIndex: units.length,
+        primaryIndex: -1,
+        raw: rawLine,
+        text,
+        visibleText: text,
+        compareText: compareText(rawLine, meta, options),
+        type: meta.type,
+        subtype: meta.subtype,
+        structural: meta.structural,
+        rawStart: start,
+        rawEnd: end
+      };
+      unit.primary = Boolean(unit.compareText) && !unit.structural && unit.type !== 'blank';
+      if (unit.primary) unit.primaryIndex = primaryIndex++;
+      units.push(unit);
+      start = end;
+    };
+
+    for (let index = 0; index < raw.length; index += 1) {
+      if (raw[index] === '\n') pushLine(index + 1);
+    }
+    if (start < raw.length) pushLine(raw.length);
+    return { raw, units, primary: units.filter(unit => unit.primary) };
   }
 
   function normalizeLine(value) {
-    return String(value || '').replace(/[\r\n]/g, '').replace(/[ \t　]+/g, ' ').trim();
+    return normalizeSpaces(String(value || '').replace(/[\r\n]/g, ''));
   }
 
   function bigrams(value) {
@@ -69,7 +160,7 @@
     return map;
   }
 
-  function lineSimilarity(left, right) {
+  function diceSimilarity(left, right) {
     const a = normalizeLine(left);
     const b = normalizeLine(right);
     if (a === b) return 1;
@@ -85,6 +176,19 @@
     });
     gb.forEach((count) => { totalB += count; });
     return totalA + totalB ? (2 * intersection) / (totalA + totalB) : 0;
+  }
+
+  function unitSimilarity(before, after) {
+    if (!before || !after || !before.compareText || !after.compareText) return 0;
+    const textScore = diceSimilarity(before.compareText, after.compareText);
+    const typeBonus = before.type === after.type ? 0.08 : 0;
+    const headingBonus = before.type === 'heading' && after.type === 'heading' ? 0.12 : 0;
+    const labelBonus = before.type === 'label' && after.type === 'label' ? 0.08 : 0;
+    return Math.min(1, textScore + typeBonus + headingBonus + labelBonus);
+  }
+
+  function lineSimilarity(left, right) {
+    return diceSimilarity(left, right);
   }
 
   function alignHunk(removed, added, threshold = DEFAULT_THRESHOLD) {
@@ -110,7 +214,7 @@
 
     for (let i = 1; i <= n; i += 1) {
       for (let j = 1; j <= m; j += 1) {
-        const similarity = lineSimilarity(removed[i - 1].text, added[j - 1].text);
+        const similarity = unitSimilarity(removed[i - 1], added[j - 1]);
         similarities[i - 1][j - 1] = similarity;
         const diagonal = similarity >= threshold
           ? score[i - 1][j - 1] + (similarity - threshold + 0.0001)
@@ -161,6 +265,7 @@
     if (!beforeText && !afterText) return [];
     if (!beforeText) return [{ type: 'add', value: afterText, hunkId, beforeStart, afterStart }];
     if (!afterText) return [{ type: 'remove', value: beforeText, hunkId, beforeStart, afterStart }];
+
     const operations = lcsDiff(Array.from(beforeText), Array.from(afterText), MAX_CHAR_CELLS);
     const common = operations.filter(op => op.type === 'same').reduce((count, op) => count + op.values.length, 0);
     const size = Math.max([...beforeText].length, [...afterText].length);
@@ -170,6 +275,7 @@
         { type: 'add', value: afterText, hunkId, beforeStart, afterStart }
       ];
     }
+
     const parts = [];
     let beforeCursor = beforeStart;
     let afterCursor = afterStart;
@@ -183,97 +289,166 @@
     return parts;
   }
 
-  function diffRows(beforeText, afterText, options = {}) {
-    const beforePrepared = core.prepareComparisonText(beforeText, options);
-    const afterPrepared = core.prepareComparisonText(afterText, options);
-    const beforeUnits = splitUnits(beforePrepared);
-    const afterUnits = splitUnits(afterPrepared);
-    const operations = lcsDiff(beforeUnits.map(unit => unit.text), afterUnits.map(unit => unit.text), 180000);
+  function makeRow(kind, beforeUnit, afterUnit, id, position) {
+    const before = beforeUnit?.text || '';
+    const after = afterUnit?.text || '';
+    const beforeStart = beforeUnit?.rawStart ?? position.before;
+    const afterStart = afterUnit?.rawStart ?? position.after;
+    return {
+      id,
+      kind,
+      before,
+      after,
+      beforeStart,
+      beforeEnd: beforeUnit?.rawEnd ?? beforeStart,
+      afterStart,
+      afterEnd: afterUnit?.rawEnd ?? afterStart,
+      beforeType: beforeUnit?.type || 'empty',
+      afterType: afterUnit?.type || 'empty',
+      severity: kind === 'same' ? 'minor' : classifySeverity(before, after),
+      parts: kind === 'same'
+        ? [{ type: 'same', value: before, hunkId: null, beforeStart, afterStart }]
+        : inlineDiff(before, after, id, beforeStart, afterStart)
+    };
+  }
+
+  function alignWeakUnits(beforeWeak, afterWeak) {
     const rows = [];
-    const hunks = [];
-    let beforeIndex = 0;
-    let afterIndex = 0;
-    let sameCount = 0;
-    let changeCount = 0;
-    let pendingRemoved = [];
-    let pendingAdded = [];
-    let pendingPosition = null;
-    const threshold = Number.isFinite(options.lineMatchThreshold) ? options.lineMatchThreshold : DEFAULT_THRESHOLD;
+    let i = 0;
+    let j = 0;
+    while (i < beforeWeak.length || j < afterWeak.length) {
+      const before = beforeWeak[i];
+      const after = afterWeak[j];
 
-    const anchors = () => ({
-      before: beforeUnits[beforeIndex]?.rawStart ?? beforePrepared.raw.length,
-      after: afterUnits[afterIndex]?.rawStart ?? afterPrepared.raw.length
-    });
-
-    const addRow = (kind, beforeUnit, afterUnit, position = anchors()) => {
-      const id = kind === 'same' ? `same-${++sameCount}` : `diff-${++changeCount}`;
-      const before = beforeUnit?.text || '';
-      const after = afterUnit?.text || '';
-      const beforeStart = beforeUnit?.rawStart ?? position.before;
-      const afterStart = afterUnit?.rawStart ?? position.after;
-      const row = {
-        id,
-        kind,
-        before,
-        after,
-        beforeStart,
-        beforeEnd: beforeUnit?.rawEnd ?? beforeStart,
-        afterStart,
-        afterEnd: afterUnit?.rawEnd ?? afterStart,
-        severity: kind === 'same' ? 'minor' : classifySeverity(before, after),
-        parts: kind === 'same'
-          ? [{ type: 'same', value: before, hunkId: null, beforeStart, afterStart }]
-          : inlineDiff(before, after, id, beforeStart, afterStart)
-      };
-      rows.push(row);
-      if (kind !== 'same') hunks.push({ id, kind, before, after, beforeStart: row.beforeStart, beforeEnd: row.beforeEnd, afterStart: row.afterStart, afterEnd: row.afterEnd, severity: row.severity });
-    };
-
-    const flushPending = () => {
-      if (!pendingRemoved.length && !pendingAdded.length) return;
-      const position = pendingPosition || anchors();
-      alignHunk(pendingRemoved, pendingAdded, threshold).forEach((pair) => {
-        if (pair.before && pair.after) addRow('replace', pair.before, pair.after, position);
-        else if (pair.before) addRow('delete', pair.before, null, position);
-        else addRow('insert', null, pair.after, position);
-      });
-      pendingRemoved = [];
-      pendingAdded = [];
-      pendingPosition = null;
-    };
-
-    for (const operation of operations) {
-      if (operation.type === 'same') {
-        for (let count = 0; count < operation.values.length; count += 1) {
-          const beforeUnit = beforeUnits[beforeIndex];
-          const afterUnit = afterUnits[afterIndex];
-          const blankBridge = isBlankUnit(beforeUnit?.text) && isBlankUnit(afterUnit?.text);
-          // A shared blank line separates paragraphs visually, but it must not
-          // terminate a pending changed hunk. Otherwise a rewritten paragraph
-          // before/after that blank never gets a chance to align.
-          if (!blankBridge || (!pendingRemoved.length && !pendingAdded.length)) flushPending();
-          addRow('same', beforeUnit, afterUnit);
-          beforeIndex += 1;
-          afterIndex += 1;
-        }
-      } else if (operation.type === 'remove') {
-        if (!pendingPosition) pendingPosition = anchors();
-        for (let count = 0; count < operation.values.length; count += 1) pendingRemoved.push(beforeUnits[beforeIndex++]);
-      } else {
-        if (!pendingPosition) pendingPosition = anchors();
-        for (let count = 0; count < operation.values.length; count += 1) pendingAdded.push(afterUnits[afterIndex++]);
+      if (before && after && before.type === 'blank' && after.type === 'blank') {
+        rows.push({ before, after, kind: 'same' });
+        i += 1;
+        j += 1;
+      } else if (before && after && before.structural && after.structural && before.raw === after.raw) {
+        rows.push({ before, after, kind: 'same' });
+        i += 1;
+        j += 1;
+      } else if (before && before.type !== 'blank') {
+        rows.push({ before, after: null, kind: 'delete' });
+        i += 1;
+      } else if (after && after.type !== 'blank') {
+        rows.push({ before: null, after, kind: 'insert' });
+        j += 1;
+      } else if (before) {
+        rows.push({ before, after: null, kind: 'delete' });
+        i += 1;
+      } else if (after) {
+        rows.push({ before: null, after, kind: 'insert' });
+        j += 1;
       }
     }
-    flushPending();
+    return rows;
+  }
+
+  function buildPrimaryPairs(beforePrimary, afterPrimary, threshold) {
+    const operations = lcsDiff(beforePrimary.map(unit => unit.compareText), afterPrimary.map(unit => unit.compareText), MAX_LINE_CELLS);
+    const pairs = [];
+    let beforeIndex = 0;
+    let afterIndex = 0;
+    let operationIndex = 0;
+
+    while (operationIndex < operations.length) {
+      const operation = operations[operationIndex];
+      if (operation.type === 'same') {
+        for (let count = 0; count < operation.values.length; count += 1) {
+          const before = beforePrimary[beforeIndex++];
+          const after = afterPrimary[afterIndex++];
+          const kind = before.text === after.text ? 'same' : 'replace';
+          pairs.push({ before, after, kind });
+        }
+        operationIndex += 1;
+        continue;
+      }
+
+      const removed = [];
+      const added = [];
+      while (operationIndex < operations.length && operations[operationIndex].type !== 'same') {
+        const changed = operations[operationIndex];
+        if (changed.type === 'remove') {
+          for (let count = 0; count < changed.values.length; count += 1) removed.push(beforePrimary[beforeIndex++]);
+        } else {
+          for (let count = 0; count < changed.values.length; count += 1) added.push(afterPrimary[afterIndex++]);
+        }
+        operationIndex += 1;
+      }
+
+      alignHunk(removed, added, threshold).forEach((pair) => {
+        if (pair.before && pair.after) pairs.push({ before: pair.before, after: pair.after, kind: pair.before.text === pair.after.text ? 'same' : 'replace' });
+        else if (pair.before) pairs.push({ before: pair.before, after: null, kind: 'delete' });
+        else pairs.push({ before: null, after: pair.after, kind: 'insert' });
+      });
+    }
+
+    return pairs;
+  }
+
+  function diffRows(beforeText, afterText, options = {}) {
+    const beforeDoc = buildUnits(beforeText, options, 'before');
+    const afterDoc = buildUnits(afterText, options, 'after');
+    const threshold = Number.isFinite(options.lineMatchThreshold) ? options.lineMatchThreshold : DEFAULT_THRESHOLD;
+    const primaryPairs = buildPrimaryPairs(beforeDoc.primary, afterDoc.primary, threshold);
+    const rows = [];
+    const hunks = [];
+    let sameCount = 0;
+    let changeCount = 0;
+    let beforeCursor = 0;
+    let afterCursor = 0;
+
+    const anchors = () => ({
+      before: beforeDoc.units[beforeCursor]?.rawStart ?? beforeDoc.raw.length,
+      after: afterDoc.units[afterCursor]?.rawStart ?? afterDoc.raw.length
+    });
+
+    const addRow = (kind, beforeUnit, afterUnit) => {
+      const id = kind === 'same' ? `same-${++sameCount}` : `diff-${++changeCount}`;
+      const row = makeRow(kind, beforeUnit, afterUnit, id, anchors());
+      rows.push(row);
+      if (kind !== 'same') {
+        hunks.push({
+          id,
+          kind,
+          before: row.before,
+          after: row.after,
+          beforeStart: row.beforeStart,
+          beforeEnd: row.beforeEnd,
+          afterStart: row.afterStart,
+          afterEnd: row.afterEnd,
+          severity: row.severity
+        });
+      }
+    };
+
+    const emitGap = (beforeEnd, afterEnd) => {
+      const beforeWeak = beforeDoc.units.slice(beforeCursor, beforeEnd).filter(unit => !unit.primary);
+      const afterWeak = afterDoc.units.slice(afterCursor, afterEnd).filter(unit => !unit.primary);
+      alignWeakUnits(beforeWeak, afterWeak).forEach(row => addRow(row.kind, row.before, row.after));
+      beforeCursor = beforeEnd;
+      afterCursor = afterEnd;
+    };
+
+    primaryPairs.forEach((pair) => {
+      const beforeTarget = pair.before ? pair.before.allIndex : beforeCursor;
+      const afterTarget = pair.after ? pair.after.allIndex : afterCursor;
+      emitGap(beforeTarget, afterTarget);
+      addRow(pair.kind, pair.before, pair.after);
+      if (pair.before) beforeCursor = pair.before.allIndex + 1;
+      if (pair.after) afterCursor = pair.after.allIndex + 1;
+    });
+    emitGap(beforeDoc.units.length, afterDoc.units.length);
 
     return {
       rows,
       hunks,
       parts: compact(rows.flatMap(row => row.parts)),
-      before: beforePrepared.text,
-      after: afterPrepared.text,
-      ignoredTags: beforePrepared.options.ignoreHtmlTags,
-      ignoredSoftFormatting: beforePrepared.options.ignoreSoftFormatting
+      before: beforeDoc.units.map(unit => unit.text).join(''),
+      after: afterDoc.units.map(unit => unit.text).join(''),
+      ignoredTags: options.ignoreHtmlTags !== false,
+      ignoredSoftFormatting: Boolean(options.ignoreSoftFormatting)
     };
   }
 
@@ -282,7 +457,8 @@
     const result = diffRows(beforeText, afterText, options);
     return { parts: result.parts, hunks: result.hunks };
   };
+  core._buildUnits = buildUnits;
   core._lineSimilarity = lineSimilarity;
+  core._unitSimilarity = unitSimilarity;
   core._alignHunk = alignHunk;
-  core._isBlankUnit = isBlankUnit;
 })(typeof window !== 'undefined' ? window : globalThis);
