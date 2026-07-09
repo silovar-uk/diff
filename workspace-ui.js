@@ -43,10 +43,19 @@
     style.textContent = `
       .title-field { display:none !important; }
       .workspace-ui-hidden { display:none !important; }
+      .workspace-ui-review-hidden { display:none !important; }
       .main-stage { min-width:0; overflow:visible !important; }
       .desk-toolbar { position:sticky !important; top:var(--workspace-topbar-height,58px); z-index:110; min-height:64px; margin:0 !important; border-top:1px solid #e6ebf2; border-bottom:1px solid #dce3ee; box-shadow:0 8px 18px rgba(29,49,83,.08); background:rgba(255,255,255,.97) !important; backdrop-filter:blur(12px); }
       .desk-toolbar::before { content:''; position:absolute; inset:0; z-index:-1; background:rgba(255,255,255,.97); }
       .mode-switch { flex-shrink:0; }
+      #reviewDesk.difff-grid-active { grid-template-columns:minmax(0,1fr) !important; }
+      #reviewDesk.difff-grid-active > #reviewRail,
+      #reviewDesk.difff-grid-active > #reviewPanel { display:none !important; }
+      #reviewDesk.difff-grid-active > #difffGridView { grid-column:1 / -1 !important; }
+      .difff-before-change,
+      .source-diff-remove { padding:1px 2px !important; border-radius:3px !important; color:#8f2432 !important; font-weight:800 !important; background:rgba(246,190,198,.78) !important; text-decoration:none !important; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+      .difff-after-change,
+      .cms-diff-add { padding:1px 2px !important; border-radius:3px !important; font-weight:800 !important; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
       #workspaceDisplayDialog::backdrop { background:rgba(16,29,52,.28); }
       #workspaceDisplayDialog { width:min(460px,calc(100vw - 32px)); padding:0; border:0; border-radius:14px; color:#263550; box-shadow:0 18px 60px rgba(16,29,52,.24); }
       .workspace-display-card { display:grid; gap:14px; padding:18px; background:#fff; }
@@ -82,6 +91,16 @@
         group.setAttribute('aria-hidden', 'true');
       }
     });
+  }
+
+  function updateReviewRailVisibility() {
+    const rail = $('#reviewRail');
+    if (!rail) return;
+    const countText = $('#railCount')?.textContent.trim() || '';
+    const compareActive = $('#reviewDesk')?.classList.contains('difff-grid-active') || $('#compareModeButton')?.classList.contains('is-active');
+    const hasItems = !/^0\s*件?$/.test(countText) && countText !== '';
+    rail.classList.toggle('workspace-ui-review-hidden', compareActive || !hasItems);
+    if (!hasItems) $('#reviewPanel')?.setAttribute('hidden', '');
   }
 
   function installDisplayDialog() {
@@ -237,7 +256,10 @@
       if (!target) return;
       target.addEventListener('input', scheduleTagDecoration);
       target.addEventListener('change', scheduleTagDecoration);
-      target.addEventListener('click', () => window.setTimeout(scheduleTagDecoration, 0));
+      target.addEventListener('click', () => window.setTimeout(() => {
+        scheduleTagDecoration();
+        updateReviewRailVisibility();
+      }, 0));
     });
 
     const grid = $('#difffGridRows');
@@ -247,8 +269,13 @@
       }).observe(grid, { childList:true, subtree:false });
     }
 
+    const railCount = $('#railCount');
+    if (railCount) new MutationObserver(updateReviewRailVisibility).observe(railCount, { childList:true, characterData:true, subtree:true });
     window.addEventListener('resize', syncToolbarOffset, { passive:true });
-    window.setInterval(scheduleTagDecoration, 650);
+    window.setInterval(() => {
+      scheduleTagDecoration();
+      updateReviewRailVisibility();
+    }, 650);
   }
 
   function boot() {
@@ -257,7 +284,11 @@
     removeDistractions();
     installDisplayDialog();
     bind();
-    window.setTimeout(() => scheduleTagDecoration(true), 240);
+    updateReviewRailVisibility();
+    window.setTimeout(() => {
+      scheduleTagDecoration(true);
+      updateReviewRailVisibility();
+    }, 240);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
