@@ -10,12 +10,14 @@
 - 旧比較画面と後付け比較画面の二重描画を廃止
 - 定期的な`setInterval`、`MutationObserver`による再比較を廃止
 - 入力変更時だけ差分を計算し、結果を`state.comparison`へ保存
+- CMS-awareな比較処理を`diff-engine-v1.js`へ統合
+- 構造タグ除外、行対応、差分集計を比較エンジンだけで処理
+- アプリはエンジンの`rows`、`summary`、`beforeRaw / afterRaw`を直接使用
 - ページとExcelが同じ行対応を使用
-- 表示設定を1つのダイアログに統一
+- 表示設定を1つのダイアログに統一し、「表示を反映」で確定
 - サンプルテキストを1つの定義に統一
 - コピーのメニューを固定ヘッダーより前面に表示
 - 保存キーを`text-review-studio-v1`に統一
-- 基本差分、CMS行分類、空行をまたぐ行対応、構造タグ除外を`diff-engine-v1.js`へ統合
 
 旧ファイルは移行確認のためリポジトリに残していますが、現在の`index.html`からは読み込まれません。
 
@@ -33,6 +35,8 @@
 
 「HTMLタグを差分から除外」がONの場合、本文内容を優先して対応付けます。
 
+例：
+
 ```html
 <span class="info24-t2">販売対象試合</span>
 ```
@@ -41,59 +45,9 @@
 ◆販売対象試合
 ```
 
-この2行は見出し同士として対応させます。
+この2行は見出し同士として対応させます。`<img>`や`<div>`、`<table>`、`<picture>`など本文を持たない構造タグは、比較エンジンの段階でページとExcelの通常差分から除外します。
 
-次のような本文を持たない構造行は、ページとExcelの通常差分から除外します。
-
-```html
-<img>
-<div>
-<table>
-<tbody>
-<tr>
-<td>
-<picture>
-<source>
-<hr>
-```
-
-タグの内側に本文がある場合は、本文だけを比較します。「表示」から「HTMLタグを表示」をONにすると、対応する原稿位置のタグをチップとして確認できます。
-
-「HTMLタグを差分から除外」をOFFにすると、タグと属性を含む原文を比較します。
-
-## 差分エンジン
-
-現在の比較処理は`diff-engine-v1.js`だけで実行します。
-
-処理順：
-
-```text
-原稿
-↓
-行をCMS-aware Unitへ分類
-↓
-表示文字列と対応付け用文字列を分離
-↓
-本文・見出し・ラベルを先に対応付け
-↓
-空行を近い本文行の間へ戻す
-↓
-行内の文字差分を生成
-```
-
-主なUnit：
-
-```text
-heading
-label
-text
-link
-blank
-asset
-layout
-```
-
-比較結果には、画面表示用テキスト、原文、行種別、差分パーツ、差分集計を含みます。
+「表示」から「HTMLタグを表示」をONにすると、比較エンジンが各行へ保持した元のHTMLをタグチップとして確認できます。比較結果自体は変わりません。
 
 ## Excel出力
 
@@ -109,7 +63,7 @@ layout
 - 見出し4行を固定
 - 横向き、1ページ幅の印刷設定
 
-Excelは`TextReviewApp.getComparison()`から、画面と同じ比較結果を受け取ります。
+Excelは`TextReviewApp.getComparison()`から、画面と同じ比較結果を受け取ります。Excel側では再比較しません。
 
 ## データ保存
 
@@ -123,7 +77,9 @@ text-review-studio-v1
 
 入力内容は外部APIへ送信しません。外部CDN、外部フォント、アクセス解析も使用しません。
 
-## 現在の実行ファイル
+## ファイル構成
+
+現在の実行ファイル：
 
 ```text
 index.html
@@ -142,24 +98,24 @@ pre-app-compat.js
 cms-tag-tools.js
 workspace-ui.js
 difff-rail-view.js
+xlsx-export.js
 diff-core.js
 diff-core-hunk-bridge.js
 diff-ignore-assets.js
-xlsx-export.js
 ```
 
 ## テスト
 
 ```bash
-node --check diff-engine-v1.js
 node --check app-v1.js
 node --check xlsx-export-v1.js
+node --check diff-engine-v1.js
 node tests/diff-tests.js
 node tests/line-alignment.test.js
 node tests/ui-contract.test.js
 ```
 
-`tests/ui-contract.test.js`は、比較エンジンが1本だけ読み込まれていること、旧ランタイムが`index.html`から外れていること、必要なDOMが存在すること、ポーリングが戻っていないこと、Excelがページの比較モデルを使用することを確認します。
+`tests/ui-contract.test.js`は、旧ランタイムが`index.html`から読み込まれていないこと、必要なDOMが存在すること、ポーリングが戻っていないこと、アプリが構造タグを再フィルターせず比較エンジンの結果を直接使うこと、Excelがページの比較モデルを使用することを確認します。
 
 ## GitHub Pages
 
