@@ -9,6 +9,12 @@
 
   const STORAGE_KEY = 'text-review-studio-v1';
   const LEGACY_KEYS = ['text-review-studio-v0.6.3', 'text-review-studio-v0.6.2', 'text-review-studio-v0.6.1', 'text-review-studio-v0.6.0'];
+  const REQUIRED_IDS = [
+    'baselineText', 'workingText', 'editModeButton', 'compareModeButton',
+    'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
+    'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
+    'displayWhitespace', 'displayUrls', 'searchInput', 'searchCount', 'toast'
+  ];
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -60,13 +66,14 @@
     hr: ['<hr class="info26__hr1" />', '']
   };
 
+  const emptySummary = () => ({ changes: 0, replaces: 0, inserts: 0, deletes: 0 });
   const state = {
     before: '',
     after: '',
     mode: 'edit',
     compareOptions: { ignoreHtmlTags: true },
     displayOptions: { showTags: false, showWhitespace: false, highlightUrls: false },
-    comparison: { rows: [], summary: { changes: 0, replaces: 0, inserts: 0, deletes: 0 } },
+    comparison: { rows: [], summary: emptySummary() },
     activeRowIndex: -1,
     undoStack: [],
     redoStack: [],
@@ -79,7 +86,15 @@
   let typingTimer = 0;
 
   function escapeHTML(value = '') {
-    return String(value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
+    return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  }
+
+  function assertDomContract() {
+    const missing = REQUIRED_IDS.filter((id) => !document.getElementById(id));
+    if (!missing.length) return true;
+    document.body.innerHTML = `<p style="padding:24px;font-family:sans-serif">画面の読み込みに失敗しました。<br><small>不足要素: ${escapeHTML(missing.join(', '))}</small></p>`;
+    console.error('Text Review Studio DOM contract failed:', missing);
+    return false;
   }
 
   function snapshotData() {
@@ -187,8 +202,8 @@
   function syncEditors() {
     const before = $('#baselineText');
     const after = $('#workingText');
-    if (before && before.value !== state.before) before.value = state.before;
-    if (after && after.value !== state.after) after.value = state.after;
+    if (before.value !== state.before) before.value = state.before;
+    if (after.value !== state.after) after.value = state.after;
   }
 
   function textStats(value) {
@@ -196,19 +211,18 @@
     return { chars: Array.from(text).length, lines: text ? text.split('\n').length : 0 };
   }
 
-  function ignoreStructuralRows(rows) {
-    if (!state.compareOptions.ignoreHtmlTags) return rows;
-    return rows.filter((row) => {
-      if (['asset', 'layout'].includes(row.beforeType) || ['asset', 'layout'].includes(row.afterType)) return false;
-      if (row.kind === 'same') return true;
-      const visible = `${row.before || ''}${row.after || ''}`.replace(/<\/?[A-Za-z][^>]*>/g, '').replace(/[\s\u00a0　]/g, '');
-      return Boolean(visible);
-    });
+  function summaryFromRows(rows) {
+    return {
+      changes: rows.filter((row) => row.kind !== 'same').length,
+      replaces: rows.filter((row) => row.kind === 'replace').length,
+      inserts: rows.filter((row) => row.kind === 'insert').length,
+      deletes: rows.filter((row) => row.kind === 'delete').length
+    };
   }
 
   function calculateComparison() {
     if (!state.before || !state.after) {
-      state.comparison = { rows: [], summary: { changes: 0, replaces: 0, inserts: 0, deletes: 0 } };
+      state.comparison = { rows: [], summary: emptySummary() };
       state.activeRowIndex = -1;
       return;
     }
@@ -216,14 +230,11 @@
       ignoreHtmlTags: state.compareOptions.ignoreHtmlTags,
       ignoreSoftFormatting: false
     });
-    const rows = ignoreStructuralRows(result.rows || []);
-    const summary = {
-      changes: rows.filter((row) => row.kind !== 'same').length,
-      replaces: rows.filter((row) => row.kind === 'replace').length,
-      inserts: rows.filter((row) => row.kind === 'insert').length,
-      deletes: rows.filter((row) => row.kind === 'delete').length
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    state.comparison = {
+      rows,
+      summary: result.summary || summaryFromRows(rows)
     };
-    state.comparison = { rows, summary };
     const changed = changedIndexes();
     if (!changed.includes(state.activeRowIndex)) state.activeRowIndex = changed[0] ?? -1;
   }
@@ -248,7 +259,7 @@
   }
 
   function marker(kind) {
-    return ({ replace:'↔', insert:'＋', delete:'−' }[kind] || '');
+    return ({ replace: '↔', insert: '＋', delete: '−' }[kind] || '');
   }
 
   function formatWhitespace(text) {
@@ -277,8 +288,12 @@
   }
 
   function rowRaw(row, side) {
-    if (side === 'before') return state.before.slice(row.beforeStart || 0, row.beforeEnd || row.beforeStart || 0);
-    return state.after.slice(row.afterStart || 0, row.afterEnd || row.afterStart || 0);
+    const direct = side === 'before' ? row.beforeRaw : row.afterRaw;
+    if (typeof direct === 'string') return direct;
+    const source = side === 'before' ? state.before : state.after;
+    const start = side === 'before' ? row.beforeStart : row.afterStart;
+    const end = side === 'before' ? row.beforeEnd : row.afterEnd;
+    return source.slice(start || 0, end || start || 0);
   }
 
   function tagChips(row, side) {
@@ -306,7 +321,6 @@
 
   function renderComparison() {
     const rowsTarget = $('#diffRows');
-    if (!rowsTarget) return;
     if (!state.before || !state.after) {
       const title = !state.before && !state.after ? '原稿を入力してください' : !state.before ? '変更前の原稿を入力してください' : '修正後の原稿を入力してください';
       rowsTarget.innerHTML = `<div class="diff-empty-state"><div><strong>${title}</strong><p>左右に原稿を入れると、同じ高さで差分を並べます。</p></div></div>`;
@@ -323,7 +337,8 @@
       const afterEmpty = !row.after ? ' is-empty' : '';
       const active = index === state.activeRowIndex ? ' is-active' : '';
       const symbol = marker(row.kind);
-      const rail = symbol ? `<button type="button" class="diff-marker ${row.kind}" data-diff-index="${index}" aria-label="${row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : '削除'}された差分へ移動">${symbol}</button>` : '';
+      const label = row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : '削除';
+      const rail = symbol ? `<button type="button" class="diff-marker ${row.kind}" data-diff-index="${index}" aria-label="${label}された差分へ移動">${symbol}</button>` : '';
       return `<article class="diff-row${active}" data-diff-row="${index}"><div class="diff-cell before${beforeEmpty}">${renderInline(row, 'before')}</div><div class="diff-rail-cell">${rail}</div><div class="diff-cell after${afterEmpty}">${renderInline(row, 'after')}</div></article>`;
     }).join('');
     renderDiffNavigation();
@@ -334,7 +349,6 @@
     const status = $('#diffNavStatus');
     const previous = $('#diffPrev');
     const next = $('#diffNext');
-    if (!status || !previous || !next) return;
     if (!changed.length) {
       status.textContent = '差分なし';
       previous.disabled = true;
@@ -353,7 +367,7 @@
     state.activeRowIndex = index;
     $$('.diff-row').forEach((node) => node.classList.toggle('is-active', Number(node.dataset.diffRow) === index));
     renderDiffNavigation();
-    if (scroll) $(`[data-diff-row="${index}"]`)?.scrollIntoView({ block:'center', behavior:'smooth' });
+    if (scroll) $(`[data-diff-row="${index}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
   function moveDiff(direction) {
@@ -366,8 +380,8 @@
 
   function renderMode() {
     const compare = state.mode === 'compare';
-    $('#editModeButton')?.classList.toggle('is-active', !compare);
-    $('#compareModeButton')?.classList.toggle('is-active', compare);
+    $('#editModeButton').classList.toggle('is-active', !compare);
+    $('#compareModeButton').classList.toggle('is-active', compare);
     $('#editorView').hidden = compare;
     $('#compareView').hidden = !compare;
     $('#compareOptions').hidden = !compare;
@@ -377,9 +391,7 @@
   function updateStatus() {
     const status = $('#analysisState');
     const summary = $('#toolbarSummary');
-    const copy = $('#copyButton');
-    if (copy) copy.disabled = !state.after;
-    if (!status || !summary) return;
+    $('#copyButton').disabled = !state.after;
     if (state.analyzing) {
       status.textContent = '差分を更新中…';
       summary.textContent = '入力内容を反映しています';
@@ -400,9 +412,9 @@
       summary.textContent = '右側へ修正後の原稿を貼ります';
       return;
     }
-    const s = state.comparison.summary;
-    status.textContent = s.changes ? `差分 ${s.changes}件` : '差分なし';
-    summary.textContent = `置換 ${s.replaces}・追加 ${s.inserts}・削除 ${s.deletes}`;
+    const summaryValue = state.comparison.summary;
+    status.textContent = summaryValue.changes ? `差分 ${summaryValue.changes}件` : '差分なし';
+    summary.textContent = `置換 ${summaryValue.replaces}・追加 ${summaryValue.inserts}・削除 ${summaryValue.deletes}`;
   }
 
   function renderStats() {
@@ -418,9 +430,7 @@
   }
 
   function renderSearch() {
-    const count = $('#searchCount');
-    if (!count) return;
-    count.textContent = state.search.query ? `${state.search.matches.length}件` : '検索語を入力';
+    $('#searchCount').textContent = state.search.query ? `${state.search.matches.length}件` : '検索語を入力';
     $('#searchPrev').disabled = !state.search.matches.length;
     $('#searchNext').disabled = !state.search.matches.length;
   }
@@ -431,13 +441,11 @@
     renderStats();
     renderUndo();
     renderSearch();
-    const ignore = $('#ignoreHtmlTagsToggle');
-    if (ignore) ignore.checked = state.compareOptions.ignoreHtmlTags;
+    $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
   }
 
   function notify(message) {
     const toast = $('#toast');
-    if (!toast) return;
     toast.textContent = message;
     toast.classList.add('is-visible');
     clearTimeout(notify.timer);
@@ -479,9 +487,9 @@
   function protectedTransform(text, transform) {
     const tokens = [];
     const safe = String(text).replace(/https?:\/\/[^\s<]+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|<[^>]*>/g, (match) => {
-      const marker = `\uE000TRS${tokens.length}\uE001`;
+      const token = `\uE000TRS${tokens.length}\uE001`;
       tokens.push(match);
-      return marker;
+      return token;
     });
     const changed = transform(safe);
     return tokens.reduce((output, token, index) => output.replaceAll(`\uE000TRS${index}\uE001`, token), changed);
@@ -514,10 +522,10 @@
   function wrapSelection(kind) {
     const editor = $('#workingText');
     const tag = TAGS[kind];
-    if (!editor || !tag) return;
+    if (!tag) return;
     const start = editor.selectionStart;
     const end = editor.selectionEnd;
-    let open = tag[0];
+    const open = tag[0];
     const close = tag[1];
     const selected = editor.value.slice(start, end);
     if (kind === 'hr') {
@@ -529,11 +537,6 @@
       return;
     }
     if (!selected) { notify('タグを付ける文字を修正後から選択してください'); return; }
-    if (kind === 'link') {
-      const url = window.prompt('リンク先URLを入力してください', 'https://');
-      if (!url) return;
-      open = `<a href="${escapeHTML(url)}" rel="noopener noreferrer" target="_blank">`;
-    }
     const replacement = `${open}${selected}${close}`;
     commit(() => { state.after = `${editor.value.slice(0, start)}${replacement}${editor.value.slice(end)}`; }, 'タグを追加しました');
     requestAnimationFrame(() => { editor.focus(); editor.setSelectionRange(start, start + replacement.length); });
@@ -563,7 +566,7 @@
     setMode('edit');
     requestAnimationFrame(() => {
       const editor = $('#workingText');
-      editor.focus({ preventScroll:true });
+      editor.focus({ preventScroll: true });
       editor.setSelectionRange(start, start + state.search.query.length);
       const line = state.after.slice(0, start).split('\n').length;
       editor.scrollTop = Math.max(0, (line - 4) * 29);
@@ -600,8 +603,8 @@
   }
 
   function reportText() {
-    const s = state.comparison.summary;
-    const lines = [`差分確認`, `置換 ${s.replaces}件／追加 ${s.inserts}件／削除 ${s.deletes}件`, ''];
+    const summary = state.comparison.summary;
+    const lines = ['差分確認', `置換 ${summary.replaces}件／追加 ${summary.inserts}件／削除 ${summary.deletes}件`, ''];
     state.comparison.rows.filter((row) => row.kind !== 'same').forEach((row, index) => {
       lines.push(`${index + 1}. ${marker(row.kind)} ${row.before ? row.before.trim() : '（なし）'} → ${row.after ? row.after.trim() : '（なし）'}`);
     });
@@ -614,7 +617,7 @@
       html: state.after,
       report: reportText()
     };
-    const labels = { plain:'CMS本文', html:'HTML', report:'差分確認記録' };
+    const labels = { plain: 'CMS本文', html: 'HTML', report: '差分確認記録' };
     const value = values[kind] || '';
     if (!value) { notify('コピーできる内容がありません'); return; }
     try {
@@ -715,7 +718,9 @@
       }
     });
 
-    $('#displayDialog').addEventListener('click', (event) => { if (event.target === $('#displayDialog')) $('#displayDialog').close(); });
+    $('#displayDialog').addEventListener('click', (event) => {
+      if (event.target === $('#displayDialog')) $('#displayDialog').close();
+    });
     document.addEventListener('keydown', (event) => {
       const editing = event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement || event.target.isContentEditable;
       if (event.key === 'Escape') {
@@ -732,6 +737,7 @@
   }
 
   function boot() {
+    if (!assertDomContract()) return;
     hydrate();
     syncEditors();
     calculateComparison();
@@ -740,11 +746,18 @@
   }
 
   window.TextReviewApp = {
-    getComparison() { return { before:state.before, after:state.after, rows:state.comparison.rows, summary:{ ...state.comparison.summary } }; },
+    getComparison() {
+      return {
+        before: state.before,
+        after: state.after,
+        rows: state.comparison.rows,
+        summary: { ...state.comparison.summary }
+      };
+    },
     getState() { return JSON.parse(snapshotData()); },
     recalculate() { calculateComparison(); renderAll(); }
   };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })();
