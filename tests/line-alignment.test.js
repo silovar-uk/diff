@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 require('../diff-core.js');
 require('../diff-core-hunk-bridge.js');
+require('../diff-ignore-assets.js');
 const Diff = globalThis.TextReviewDiffCore;
 
 const strict = { ignoreHtmlTags: true, ignoreSoftFormatting: false };
@@ -31,24 +32,27 @@ assert.deepEqual(result.rows.map(row => row.kind), ['same', 'replace', 'same', '
 assert.equal(result.rows[1].before, '旧タイトルです\n');
 assert.equal(result.rows[1].after, '新タイトルです\n');
 
-// CMS heading markup and plain-draft heading bullets should align by meaning.
+// CMS heading markup and plain-draft heading bullets align by meaning. Image
+// tags follow the same ignore setting as other HTML tags and do not create rows.
 const pokemonTitle = '8/15(土)広島戦  “ポケモンJリーグフェス”開催決定! 来場者先着52,000名さまにEVO BAG(ポケモンのエコバッグ)をプレゼント!';
-result = Diff.diffRows(
-  `<span class="info24-t2">${pokemonTitle}</span>\n<img src="jp_bag.jpg" />\n\n浦和レッズは、8/15(土)サンフレッチェ広島戦にて“ポケモンJリーグフェス”を開催いたします。\n`,
-  `◆${pokemonTitle}\n \n浦和レッズは、8/15(土)サンフレッチェ広島戦にて“ポケモンJリーグフェス”を開催いたします。\n`,
-  strict
-);
+const cmsBefore = `<span class="info24-t2">${pokemonTitle}</span>\n<img src="jp_bag.jpg" />\n\n浦和レッズは、8/15(土)サンフレッチェ広島戦にて“ポケモンJリーグフェス”を開催いたします。\n`;
+const plainAfter = `◆${pokemonTitle}\n \n浦和レッズは、8/15(土)サンフレッチェ広島戦にて“ポケモンJリーグフェス”を開催いたします。\n`;
+result = Diff.diffRows(cmsBefore, plainAfter, strict);
 assert.deepEqual(
   result.rows.map(row => [row.kind, row.beforeType, row.afterType]),
   [
     ['replace', 'heading', 'heading'],
-    ['delete', 'asset', 'empty'],
     ['same', 'blank', 'blank'],
     ['same', 'text', 'text']
   ]
 );
+assert.equal(result.rows.some(row => row.beforeType === 'asset' || row.afterType === 'asset'), false);
 assert.equal(result.rows[0].before, `${pokemonTitle}\n`);
 assert.equal(result.rows[0].after, `◆${pokemonTitle}\n`);
+
+// Turning tag ignoring off makes the image structure visible again.
+result = Diff.diffRows(cmsBefore, plainAfter, { ...strict, ignoreHtmlTags: false });
+assert.ok(result.rows.some(row => row.beforeType === 'asset' && row.kind === 'delete'));
 
 // Blank rows are weak units: they must not prevent similar body paragraphs from
 // pairing, even when their positions differ between the two drafts.
