@@ -1,17 +1,16 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const Diff = require('../diff-core.js');
+const Diff = require('../diff-engine-v1.js');
 
 function assertRoundTrip(before, after, note) {
-  const result = Diff.diffText(before, after);
+  const result = Diff.diffText(before, after, { ignoreHtmlTags: false });
   assert.equal(Diff.reconstructBefore(result.parts), before, `${note}: before reconstruction`);
   assert.equal(Diff.reconstructAfter(result.parts), after, `${note}: after reconstruction`);
   return result;
 }
 
-// Regression: v0.3's shared-token branch advanced only the left pointer.
-// This test catches duplicate additions on the right pane.
+// Regression: the shared-token branch must not duplicate matching text.
 {
   const before = '様々なイベントを予定しております！';
   const after = '様々なイベントを予定しています！';
@@ -38,4 +37,4 @@ function assertRoundTrip(before, after, note) {
   assertRoundTrip(before, after, 'large single line fallback');
 }
 
-console.log('v0.6.2 diff tests: passed');
+console.log('v1 diff engine tests: passed');
