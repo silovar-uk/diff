@@ -42,10 +42,16 @@ uniqueActions.forEach((action) => assert.ok(app.includes(`'${action}'`) || app.i
 assert.ok(app.includes("const STORAGE_KEY = 'text-review-studio-v1'"), 'v1 persistence key is required');
 assert.ok(app.includes('window.TextReviewApp'), 'the app must expose its cached comparison to exporters');
 assert.ok(app.includes('getComparison()'), 'the shared comparison getter is required');
+assert.ok(app.includes('const REQUIRED_IDS = ['), 'the controller must validate its DOM contract at boot');
+assert.ok(app.includes('if (!assertDomContract()) return;'), 'boot must stop cleanly when required DOM is missing');
 assert.ok(!app.includes('setInterval('), 'polling is prohibited in the v1 controller');
 assert.ok(!app.includes('MutationObserver'), 'DOM mutation polling is prohibited in the v1 controller');
 assert.ok(!app.includes('projectTitle'), 'removed title state must not return');
 assert.ok(!app.includes('profileSelect'), 'removed profile state must not return');
+assert.ok(!app.includes('function ignoreStructuralRows('), 'structure filtering must not be duplicated in the controller');
+assert.ok(app.includes('summary: result.summary || summaryFromRows(rows)'), 'the controller must consume the engine summary directly');
+assert.ok(app.includes('row.beforeRaw'), 'tag display must use raw row context from the engine');
+assert.ok(app.includes('row.afterRaw'), 'tag display must use raw row context from the engine');
 
 assert.ok(engine.includes('function classifyRawLine('), 'the unified engine must own CMS classification');
 assert.ok(engine.includes('const STRUCTURAL_TAGS'), 'the unified engine must define structural HTML handling');
