@@ -1,9 +1,10 @@
 {
-  "name": "Text Review Studio | Editorial Desk",
+  "name": "Text Review Studio v1",
   "short_name": "Text Review",
+  "description": "CMS原稿に対応した左右差分確認ツール",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#edf0f6",
+  "background_color": "#f3f5f9",
   "theme_color": "#101d34",
   "icons": [
     { "src": "assets/app-icon.png", "sizes": "512x512", "type": "image/png" }
