@@ -117,6 +117,15 @@ REX TICKET http://rex-ticket.jp/　（PC・スマホ共通）
     else toolbar.appendChild(button);
   }
 
+  function loadExcelExporter() {
+    if (document.querySelector('script[data-excel-exporter]')) return;
+    const script = document.createElement('script');
+    script.src = 'xlsx-export.js';
+    script.async = false;
+    script.dataset.excelExporter = 'true';
+    document.head.appendChild(script);
+  }
+
   function setTextareaValue(id, value) {
     const textarea = document.getElementById(id);
     if (!textarea) return;
@@ -171,6 +180,7 @@ REX TICKET http://rex-ticket.jp/　（PC・スマホ共通）
 
   installSampleStyle();
   installSampleButton();
+  loadExcelExporter();
   document.addEventListener('click', (event) => {
     if (!event.target.closest('#sampleTextFillButton')) return;
     event.preventDefault();
