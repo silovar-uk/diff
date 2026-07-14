@@ -1,55 +1,56 @@
-/*
- * Text Review Studio v0.6.3
- * Static UI contract checks. No browser, network, or external dependency.
- */
+/* Text Review Studio v1 – static UI and architecture contract. */
 'use strict';
 
-const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const css = fs.readFileSync(path.join(root, 'styles.css'), 'utf8');
-const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const html = read('index.html');
+const app = read('app-v1.js');
+const css = read('app-v1.css');
+const excel = read('xlsx-export-v1.js');
 
-const requiredFiles = ['app.js', 'diff-core.js', 'styles.css', 'manifest.webmanifest', 'assets/app-icon.png'];
-requiredFiles.forEach(file => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
-
-[
-  'control-sidebar', 'sidebarStartHint', 'menu-group', 'profileSelect',
-  'baselineEmptyState', 'workingEmptyState', 'workspaceGuidance',
-  'compareStartHint', 'baselineCompare', 'afterCompare', 'gutterMap', 'diffLegend',
-  'reviewRail', 'reviewRailHint', 'nextAction', 'copyButton', 'selectionToolbar'
-].forEach(token => assert.ok(html.includes(token), `missing UI anchor: ${token}`));
-
-const actions = [...html.matchAll(/data-action="([^"]+)"/g)].map(match => match[1]);
-const unhandled = [...new Set(actions)].filter(action => !app.includes(`case '${action}'`) && action !== 'scroll-top');
-assert.deepStrictEqual(unhandled, [], `unhandled data-action values: ${unhandled.join(', ')}`);
+['diff-core.js', 'diff-core-hunk-bridge.js', 'app-v1.js', 'app-v1.css', 'xlsx-export-v1.js', 'assets/app-icon.png']
+  .forEach((file) => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
 
 [
-  'function renderEntryGuides()', 'function syncWorkspaceGuidance()',
-  'function renderDiffLegend()', 'function toggleDiffLegend()',
-  'function closeRailHint()', 'function focusPane(which)',
-  'LEGACY_SAVE_KEYS', 'text-review-studio-v0.6.2'
-].forEach(token => assert.ok(app.includes(token), `missing layout safety behavior: ${token}`));
+  'baselineText', 'workingText', 'editModeButton', 'compareModeButton',
+  'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
+  'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
+  'displayWhitespace', 'displayUrls', 'searchInput', 'toast'
+].forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing v1 UI anchor: ${id}`));
 
-assert.ok(/id="copyButton"[^>]*disabled/.test(html), 'copy must start disabled until the right-hand text exists');
-assert.ok(app.includes("$('#copyButton').disabled = !hasWorking"), 'copy availability must follow working text');
-assert.ok(app.includes('aria-label="差分：${kindLabel}'), 'gutter markers need text alternatives');
+['projectTitle', 'profileSelect', 'reviewRail', 'reviewPanel', 'workspaceDisplayDialog']
+  .forEach((id) => assert.ok(!html.includes(`id="${id}"`), `legacy UI must not remain in active HTML: ${id}`));
 
-const v063 = css.slice(css.lastIndexOf('/* v0.6.3'));
-assert.ok(v063.includes('layout safety'), 'missing v0.6.3 style marker');
-assert.ok(css.includes('.workspace-guidance { display: flex'), 'guidance must be placed in normal flow');
-assert.ok(css.includes('.compare-start-hint { display: flex'), 'entry hint must be an inline guide');
-assert.ok(css.includes('.diff-legend { position: relative'), 'legend must not float over a document pane');
-assert.ok(html.includes('class="after-content"'), 'selection toolbar needs a dedicated flow container');
-assert.ok(css.includes('.selection-toolbar { display: flex'), 'selection toolbar must be inline');
-assert.ok(css.includes('.after-content { display: grid'), 'after pane must preserve its three-row grid when the inline toolbar opens');
-assert.ok(!css.includes('.selection-toolbar { position: absolute'), 'selection toolbar must not cover the working text');
-assert.ok(css.includes('.rail-hint { position: relative'), 'rail hint must stay inside the rail');
-assert.ok(!css.includes('.compare-start-hint { position: absolute'), 'entry hint must not overlap editors');
-assert.ok(!css.includes('.diff-legend { position: absolute'), 'legend must not overlap editors');
-assert.ok(css.includes('.source-diff { background: transparent !important'), 'source side must stay colour-only');
+['pre-app-compat.js', 'app.js', 'cms-tag-tools.js', 'workspace-ui.js', 'difff-rail-view.js', 'xlsx-export.js']
+  .forEach((file) => assert.ok(!html.includes(`src="${file}"`), `legacy runtime must not be loaded: ${file}`));
 
-console.log('v0.6.3 UI contract tests: passed');
+['diff-core.js', 'diff-core-hunk-bridge.js', 'app-v1.js', 'xlsx-export-v1.js']
+  .forEach((file) => assert.ok(html.includes(`src="${file}"`), `v1 runtime missing: ${file}`));
+
+const actions = [...html.matchAll(/data-action="([^"]+)"/g)].map((match) => match[1]);
+const uniqueActions = [...new Set(actions)];
+uniqueActions.forEach((action) => assert.ok(app.includes(`'${action}'`) || app.includes(`${action},`), `unhandled v1 action: ${action}`));
+
+assert.ok(app.includes("const STORAGE_KEY = 'text-review-studio-v1'"), 'v1 persistence key is required');
+assert.ok(app.includes('window.TextReviewApp'), 'the app must expose its cached comparison to exporters');
+assert.ok(app.includes('getComparison()'), 'the shared comparison getter is required');
+assert.ok(!app.includes('setInterval('), 'polling is prohibited in the v1 controller');
+assert.ok(!app.includes('MutationObserver'), 'DOM mutation polling is prohibited in the v1 controller');
+assert.ok(!app.includes('projectTitle'), 'removed title state must not return');
+assert.ok(!app.includes('profileSelect'), 'removed profile state must not return');
+
+assert.ok(css.includes('.topbar {'), 'topbar styles are required');
+assert.ok(css.includes('z-index:2000'), 'copy menu must sit above sticky navigation');
+assert.ok(css.includes('.desk-toolbar {'), 'fixed mode controls are required');
+assert.ok(css.includes('position:sticky'), 'mode controls must remain visible while scrolling');
+
+assert.ok(excel.includes('root.TextReviewApp?.getComparison?.()'), 'Excel must reuse the page comparison model');
+assert.ok(excel.includes("part.type === changedType ? COLOR.red"), 'both Excel sides must use red changed text');
+assert.ok(!excel.includes("String(model.before || '').length"), 'Excel must not show source character counts');
+assert.ok(!excel.includes("String(model.after || '').length"), 'Excel must not show result character counts');
+
+console.log('v1 UI contract tests: passed');
