@@ -18,10 +18,9 @@ jobs:
           node-version: 20
       - name: Syntax checks
         run: |
+          node --check diff-engine-v1.js
           node --check app-v1.js
           node --check xlsx-export-v1.js
-          node --check diff-core.js
-          node --check diff-core-hunk-bridge.js
       - name: Regression tests
         run: |
           node tests/diff-tests.js
