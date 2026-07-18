@@ -12,15 +12,20 @@ const app = read('app-v1.js');
 const css = read('app-v1.css');
 const excel = read('xlsx-export-v1.js');
 const engine = read('diff-engine-v1.js');
+const replace = read('replace-tools-v1.js');
+const replaceCss = read('replace-tools-v1.css');
 
-['diff-engine-v1.js', 'app-v1.js', 'app-v1.css', 'xlsx-export-v1.js', 'assets/app-icon.png']
-  .forEach((file) => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
+[
+  'diff-engine-v1.js', 'app-v1.js', 'app-v1.css', 'xlsx-export-v1.js',
+  'replace-tools-v1.js', 'replace-tools-v1.css', 'assets/app-icon.png'
+].forEach((file) => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
 
 [
   'baselineText', 'workingText', 'editModeButton', 'compareModeButton',
   'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
   'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
-  'displayWhitespace', 'displayUrls', 'searchInput', 'toast'
+  'displayWhitespace', 'displayUrls', 'searchInput', 'replaceInput',
+  'replaceHistory', 'replaceHistoryCount', 'toast'
 ].forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing v1 UI anchor: ${id}`));
 
 ['projectTitle', 'profileSelect', 'reviewRail', 'reviewPanel', 'workspaceDisplayDialog']
@@ -32,12 +37,17 @@ const engine = read('diff-engine-v1.js');
   'diff-core-hunk-bridge.js', 'diff-ignore-assets.js'
 ].forEach((file) => assert.ok(!html.includes(`src="${file}"`), `legacy runtime must not be loaded: ${file}`));
 
-['diff-engine-v1.js', 'app-v1.js', 'xlsx-export-v1.js']
+['diff-engine-v1.js', 'app-v1.js', 'replace-tools-v1.js', 'xlsx-export-v1.js']
   .forEach((file) => assert.ok(html.includes(`src="${file}"`), `v1 runtime missing: ${file}`));
+assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
 
 const actions = [...html.matchAll(/data-action="([^"]+)"/g)].map((match) => match[1]);
 const uniqueActions = [...new Set(actions)];
 uniqueActions.forEach((action) => assert.ok(app.includes(`'${action}'`) || app.includes(`${action},`), `unhandled v1 action: ${action}`));
+
+[
+  'replace-next', 'replace-all', 'fullwidth-to-halfwidth', 'clear-history'
+].forEach((action) => assert.ok(html.includes(`data-replace-action="${action}"`), `missing replace action: ${action}`));
 
 assert.ok(app.includes("const STORAGE_KEY = 'text-review-studio-v1'"), 'v1 persistence key is required');
 assert.ok(app.includes('window.TextReviewApp'), 'the app must expose its cached comparison to exporters');
@@ -59,6 +69,13 @@ assert.ok(engine.includes('beforeRaw:'), 'rows must retain raw source context fo
 assert.ok(engine.includes('summary,'), 'the engine must return one shared summary');
 assert.ok(!engine.includes('ensureCompatibilityAnchors'), 'the engine must not create fake DOM anchors');
 assert.ok(!engine.includes('localStorage'), 'the comparison engine must stay independent from persistence');
+
+assert.ok(replace.includes("const SESSION_KEY = 'text-review-studio-v1-replace-history'"), 'replacement history must be scoped to the current tab session');
+assert.ok(replace.includes('function replaceAllLiteral('), 'literal replace-all is required');
+assert.ok(replace.includes('function replaceOneAtOrAfter('), 'single replacement is required');
+assert.ok(replace.includes('function toHalfwidthAscii('), 'fullwidth ASCII conversion is required');
+assert.ok(replace.includes('sessionStorage'), 'replacement history must use session storage');
+assert.ok(replaceCss.includes('.replace-history-list'), 'replacement history styles are required');
 
 assert.ok(css.includes('.topbar {'), 'topbar styles are required');
 assert.ok(css.includes('z-index:2000'), 'copy menu must sit above sticky navigation');
