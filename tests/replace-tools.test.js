@@ -58,16 +58,37 @@ assert.equal(result.text, '日本語とカナはそのまま');
 assert.equal(result.count, 0);
 assert.deepEqual(result.changes, []);
 
-result = Replace.removeWhitespaceOnlyLines('本文\n   \n　\t　\r\n次の本文\n末尾');
+// Empty lines remain; only invisible or whitespace characters inside them are removed.
+result = Replace.removeInvisibleCharacters('本文\u200B\n\u200B\n<span>見出し</span>\n\u00A0\n次の本文');
+assert.equal(result.text, '本文\n\n<span>見出し</span>\n\n次の本文');
+assert.equal(result.lines, 3);
+assert.equal(result.count, 3);
+assert.deepEqual(result.changes, [
+  { from: '\u200B', to: '', count: 2 },
+  { from: '\u00A0', to: '', count: 1 }
+]);
+
+result = Replace.removeInvisibleCharacters('本文\n   \n　\t　\r\n次の本文\n末尾');
 assert.equal(result.text, '本文\n\n\r\n次の本文\n末尾');
 assert.equal(result.lines, 2);
 assert.equal(result.count, 6);
 
-result = Replace.removeWhitespaceOnlyLines(' 先頭に空白\n本文の後ろ  \n通常行');
-assert.equal(result.text, ' 先頭に空白\n本文の後ろ  \n通常行');
+// NBSP inside a visible line becomes a normal space instead of joining words.
+result = Replace.removeInvisibleCharacters('販売価格\u00A04,950円');
+assert.equal(result.text, '販売価格 4,950円');
+assert.equal(result.lines, 1);
+assert.equal(result.count, 1);
+assert.deepEqual(result.changes, [{ from: '\u00A0', to: ' ', count: 1 }]);
+
+// Real empty lines and meaningful emoji joiners remain unchanged.
+result = Replace.removeInvisibleCharacters('本文\n\n👨‍👩‍👧\n次の本文');
+assert.equal(result.text, '本文\n\n👨‍👩‍👧\n次の本文');
 assert.equal(result.lines, 0);
 assert.equal(result.count, 0);
 
+assert.deepEqual(Replace.removeWhitespaceOnlyLines('本文\n\uFEFF\n次'), Replace.removeInvisibleCharacters('本文\n\uFEFF\n次'));
+assert.equal(Replace.visibleCharacter('\u200B'), 'ゼロ幅スペース');
+assert.equal(Replace.visibleCharacter('\u00A0'), 'NBSP');
 assert.equal(Replace.visibleCharacter('　'), '全角スペース');
 assert.equal(Replace.visibleCharacter(' '), '半角スペース');
 assert.equal(Replace.countChangedSpan('abcXYZdef', 'abc123def'), 3);
