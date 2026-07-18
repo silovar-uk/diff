@@ -1,4 +1,4 @@
-/* Text Review Studio v1 – search, replace, width conversion, and session history. */
+/* Text Review Studio v1 – search, replace, cleanup, width conversion, and session history. */
 (function (root, factory) {
   'use strict';
 
@@ -16,6 +16,7 @@
   const SESSION_KEY = 'text-review-studio-v1-replace-history';
   const MAX_HISTORY = 50;
   const MAX_VISIBLE_CHANGES = 18;
+  const HALFWIDTH_EXCEPTIONS = new Set(['～', '？']);
   const ACTION_LABELS = {
     'transform-space': '空白を整理',
     'transform-symbol': '記号を統一',
@@ -86,6 +87,8 @@
     let count = 0;
     const changes = new Map();
     const output = Array.from(String(text || '')).map((character) => {
+      if (HALFWIDTH_EXCEPTIONS.has(character)) return character;
+
       const code = character.codePointAt(0);
       let converted = character;
       if (code === 0x3000) converted = ' ';
@@ -100,6 +103,18 @@
       return converted;
     }).join('');
     return { text: output, count, changes: [...changes.values()] };
+  }
+
+  function removeWhitespaceOnlyLines(text) {
+    let count = 0;
+    let lines = 0;
+    const source = String(text || '');
+    const output = source.replace(/(^|\r\n|\r|\n)([ \t\u3000]+)(?=\r\n|\r|\n|$)/g, (match, lineBreak, whitespace) => {
+      lines += 1;
+      count += Array.from(whitespace).length;
+      return lineBreak;
+    });
+    return { text: output, count, lines };
   }
 
   function countChangedSpan(before, after) {
@@ -172,6 +187,9 @@
     if (entry.kind === 'width') {
       const types = Array.isArray(entry.changes) ? entry.changes.length : 0;
       return types ? `${entry.count}文字を半角へ変換・${types}種類` : `全角英数・記号→半角・${entry.count}文字`;
+    }
+    if (entry.kind === 'blank-line-whitespace') {
+      return `${entry.lines}行から空白${entry.count}文字を削除`;
     }
     return `${entry.count || 1}文字程度を変更`;
   }
@@ -317,7 +335,27 @@
     const cursor = editor.selectionStart;
     dispatchEditorInput(editor, result.text, Math.min(cursor, result.text.length), Math.min(cursor, result.text.length));
     addHistory({ kind: 'width', label: '全角英数・記号を半角へ', count: result.count, changes: result.changes });
-    notify(`${result.count}文字を半角へ変換しました`);
+    notify(`${result.count}文字を半角へ変換しました（～・？は対象外）`);
+  }
+
+  function cleanupWhitespaceOnlyLines() {
+    const editor = $('#workingText');
+    if (!editor) return;
+    const result = removeWhitespaceOnlyLines(editor.value);
+    if (!result.count) {
+      notify('空白だけが入った行はありません');
+      return;
+    }
+
+    const cursor = editor.selectionStart;
+    dispatchEditorInput(editor, result.text, Math.min(cursor, result.text.length), Math.min(cursor, result.text.length));
+    addHistory({
+      kind: 'blank-line-whitespace',
+      label: '空白だけの行を空行に',
+      count: result.count,
+      lines: result.lines
+    });
+    notify(`${result.lines}行から空白を削除しました`);
   }
 
   function clearHistory() {
@@ -345,6 +383,22 @@
     }, 0);
   }
 
+  function ensureWhitespaceOnlyButton() {
+    const grid = document.querySelector('.tool-grid');
+    if (!grid || grid.querySelector('[data-replace-action="trim-whitespace-only-lines"]')) return;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.replaceAction = 'trim-whitespace-only-lines';
+    button.textContent = '空白だけの行を空行に';
+    button.title = '文字がなく、半角・全角スペースやタブだけが入った行から空白を削除します';
+    button.style.gridColumn = '1 / -1';
+    grid.appendChild(button);
+
+    const countLabel = grid.closest('.tool-section')?.querySelector('summary em');
+    if (countLabel) countLabel.textContent = `${grid.querySelectorAll('button').length}項目`;
+  }
+
   function boot() {
     if (booted || typeof document === 'undefined') return;
     booted = true;
@@ -354,6 +408,7 @@
       return;
     }
 
+    ensureWhitespaceOnlyButton();
     loadHistory();
     renderHistory();
 
@@ -364,6 +419,7 @@
       if (action === 'replace-next') replaceNext();
       if (action === 'replace-all') replaceAll();
       if (action === 'fullwidth-to-halfwidth') convertFullwidth();
+      if (action === 'trim-whitespace-only-lines') cleanupWhitespaceOnlyLines();
       if (action === 'clear-history') clearHistory();
     });
     document.addEventListener('click', watchQuickPolish, true);
@@ -380,6 +436,7 @@
     replaceAllLiteral,
     replaceOneAtOrAfter,
     toHalfwidthAscii,
+    removeWhitespaceOnlyLines,
     countChangedSpan,
     visibleCharacter
   };
