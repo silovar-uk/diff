@@ -80,7 +80,7 @@ assert.ok(replace.includes('function replaceOneAtOrAfter('), 'single replacement
 assert.ok(replace.includes('function toHalfwidthAscii('), 'fullwidth ASCII conversion is required');
 assert.ok(replace.includes("new Set(['～', '？'])"), 'wave dash and question mark must remain fullwidth');
 assert.ok(replace.includes('function removeWhitespaceOnlyLines('), 'whitespace-only line cleanup is required');
-assert.ok(replace.includes("data-replace-action = 'trim-whitespace-only-lines'"), 'whitespace-only cleanup button must be added');
+assert.ok(replace.includes("button.dataset.replaceAction = 'trim-whitespace-only-lines'"), 'whitespace-only cleanup button must be added');
 assert.ok(replace.includes('changes: result.changes'), 'width conversion history must retain exact character changes');
 assert.ok(replace.includes('function createChangeList('), 'width conversion details must render in history');
 assert.ok(replace.includes('sessionStorage'), 'replacement history must use session storage');
