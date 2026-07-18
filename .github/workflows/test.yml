@@ -20,9 +20,11 @@ jobs:
         run: |
           node --check diff-engine-v1.js
           node --check app-v1.js
+          node --check replace-tools-v1.js
           node --check xlsx-export-v1.js
       - name: Regression tests
         run: |
           node tests/diff-tests.js
           node tests/line-alignment.test.js
+          node tests/replace-tools.test.js
           node tests/ui-contract.test.js
