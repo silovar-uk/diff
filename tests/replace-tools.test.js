@@ -45,10 +45,28 @@ assert.deepEqual(result.changes, [
   { from: '　', to: ' ', count: 2 }
 ]);
 
+result = Replace.toHalfwidthAscii('～？？Ａ！');
+assert.equal(result.text, '～？？A!');
+assert.equal(result.count, 2);
+assert.deepEqual(result.changes, [
+  { from: 'Ａ', to: 'A', count: 1 },
+  { from: '！', to: '!', count: 1 }
+]);
+
 result = Replace.toHalfwidthAscii('日本語とカナはそのまま');
 assert.equal(result.text, '日本語とカナはそのまま');
 assert.equal(result.count, 0);
 assert.deepEqual(result.changes, []);
+
+result = Replace.removeWhitespaceOnlyLines('本文\n   \n　\t　\r\n次の本文\n末尾');
+assert.equal(result.text, '本文\n\n\r\n次の本文\n末尾');
+assert.equal(result.lines, 2);
+assert.equal(result.count, 7);
+
+result = Replace.removeWhitespaceOnlyLines(' 先頭に空白\n本文の後ろ  \n通常行');
+assert.equal(result.text, ' 先頭に空白\n本文の後ろ  \n通常行');
+assert.equal(result.lines, 0);
+assert.equal(result.count, 0);
 
 assert.equal(Replace.visibleCharacter('　'), '全角スペース');
 assert.equal(Replace.visibleCharacter(' '), '半角スペース');
