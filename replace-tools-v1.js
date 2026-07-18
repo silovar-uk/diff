@@ -1,4 +1,4 @@
-/* Text Review Studio v1 – search, replace, cleanup, width conversion, and session history. */
+/* Text Review Studio v1 – search, replace, invisible cleanup, width conversion, and session history. */
 (function (root, factory) {
   'use strict';
 
@@ -17,6 +17,12 @@
   const MAX_HISTORY = 50;
   const MAX_VISIBLE_CHANGES = 18;
   const HALFWIDTH_EXCEPTIONS = new Set(['～', '？']);
+
+  // ZWNJ / ZWJ are excluded here because they can be meaningful in scripts and emoji.
+  const INLINE_INVISIBLE_PATTERN = /[\u00AD\u180E\u200B\u200E\u200F\u2060\uFEFF]/g;
+  const SPECIAL_SPACE_PATTERN = /[\u00A0\u2007\u202F]/g;
+  const BLANKISH_LINE_PATTERN = /^[ \t\u3000\u00A0\u2007\u202F\u00AD\u180E\u200B-\u200F\u2060\uFEFF]+$/;
+
   const ACTION_LABELS = {
     'transform-space': '空白を整理',
     'transform-symbol': '記号を統一',
@@ -83,6 +89,13 @@
     return { text: next, count: 1, start: found, end: found + String(replacement).length, wrapped };
   }
 
+  function recordChange(changes, from, to) {
+    const key = `${from}\u0000${to}`;
+    const current = changes.get(key) || { from, to, count: 0 };
+    current.count += 1;
+    changes.set(key, current);
+  }
+
   function toHalfwidthAscii(text) {
     let count = 0;
     const changes = new Map();
@@ -96,25 +109,56 @@
       if (converted === character) return character;
 
       count += 1;
-      const key = `${character}\u0000${converted}`;
-      const current = changes.get(key) || { from: character, to: converted, count: 0 };
-      current.count += 1;
-      changes.set(key, current);
+      recordChange(changes, character, converted);
       return converted;
     }).join('');
     return { text: output, count, changes: [...changes.values()] };
   }
 
-  function removeWhitespaceOnlyLines(text) {
+  function removeInvisibleCharacters(text) {
+    const parts = String(text || '').split(/(\r\n|\r|\n)/);
+    const changes = new Map();
     let count = 0;
     let lines = 0;
-    const source = String(text || '');
-    const output = source.replace(/(^|\r\n|\r|\n)([ \t\u3000]+)(?=\r\n|\r|\n|$)/g, (match, lineBreak, whitespace) => {
-      lines += 1;
-      count += Array.from(whitespace).length;
-      return lineBreak;
-    });
-    return { text: output, count, lines };
+
+    for (let index = 0; index < parts.length; index += 2) {
+      const line = parts[index];
+      if (!line) continue;
+
+      if (BLANKISH_LINE_PATTERN.test(line)) {
+        Array.from(line).forEach((character) => recordChange(changes, character, ''));
+        count += Array.from(line).length;
+        lines += 1;
+        parts[index] = '';
+        continue;
+      }
+
+      let lineChanges = 0;
+      let cleaned = line.replace(INLINE_INVISIBLE_PATTERN, (character) => {
+        recordChange(changes, character, '');
+        count += 1;
+        lineChanges += 1;
+        return '';
+      });
+      cleaned = cleaned.replace(SPECIAL_SPACE_PATTERN, (character) => {
+        recordChange(changes, character, ' ');
+        count += 1;
+        lineChanges += 1;
+        return ' ';
+      });
+
+      if (lineChanges) {
+        lines += 1;
+        parts[index] = cleaned;
+      }
+    }
+
+    return { text: parts.join(''), count, lines, changes: [...changes.values()] };
+  }
+
+  // Compatibility alias for callers from the first cleanup implementation.
+  function removeWhitespaceOnlyLines(text) {
+    return removeInvisibleCharacters(text);
   }
 
   function countChangedSpan(before, after) {
@@ -139,11 +183,24 @@
 
   function visibleCharacter(value) {
     const labels = {
+      '': '削除',
       ' ': '半角スペース',
       '　': '全角スペース',
       '\t': 'タブ',
       '\n': '改行',
-      '\r': '復帰'
+      '\r': '復帰',
+      '\u00A0': 'NBSP',
+      '\u2007': '数字幅スペース',
+      '\u202F': '細い改行禁止スペース',
+      '\u00AD': 'ソフトハイフン',
+      '\u180E': 'モンゴル語母音区切り',
+      '\u200B': 'ゼロ幅スペース',
+      '\u200C': 'ゼロ幅非接合子',
+      '\u200D': 'ゼロ幅接合子',
+      '\u200E': '左から右マーク',
+      '\u200F': '右から左マーク',
+      '\u2060': 'ワードジョイナー',
+      '\uFEFF': 'BOM'
     };
     return labels[value] || String(value ?? '');
   }
@@ -188,6 +245,10 @@
       const types = Array.isArray(entry.changes) ? entry.changes.length : 0;
       return types ? `${entry.count}文字を半角へ変換・${types}種類` : `全角英数・記号→半角・${entry.count}文字`;
     }
+    if (entry.kind === 'invisible') {
+      const types = Array.isArray(entry.changes) ? entry.changes.length : 0;
+      return `${entry.lines}行・${entry.count}文字を削除／整理${types ? `・${types}種類` : ''}`;
+    }
     if (entry.kind === 'blank-line-whitespace') {
       return `${entry.lines}行から空白${entry.count}文字を削除`;
     }
@@ -195,10 +256,11 @@
   }
 
   function createChangeList(entry) {
-    if (entry.kind !== 'width' || !Array.isArray(entry.changes) || !entry.changes.length) return null;
+    const supported = entry.kind === 'width' || entry.kind === 'invisible';
+    if (!supported || !Array.isArray(entry.changes) || !entry.changes.length) return null;
     const list = document.createElement('div');
     list.className = 'replace-history-changes';
-    list.setAttribute('aria-label', '変換した文字の一覧');
+    list.setAttribute('aria-label', entry.kind === 'width' ? '変換した文字の一覧' : '削除・整理した見えない文字の一覧');
 
     entry.changes.slice(0, MAX_VISIBLE_CHANGES).forEach((change) => {
       const chip = document.createElement('span');
@@ -338,24 +400,25 @@
     notify(`${result.count}文字を半角へ変換しました（～・？は対象外）`);
   }
 
-  function cleanupWhitespaceOnlyLines() {
+  function cleanupInvisibleCharacters() {
     const editor = $('#workingText');
     if (!editor) return;
-    const result = removeWhitespaceOnlyLines(editor.value);
+    const result = removeInvisibleCharacters(editor.value);
     if (!result.count) {
-      notify('空白だけが入った行はありません');
+      notify('削除・整理できる見えない文字はありません');
       return;
     }
 
     const cursor = editor.selectionStart;
     dispatchEditorInput(editor, result.text, Math.min(cursor, result.text.length), Math.min(cursor, result.text.length));
     addHistory({
-      kind: 'blank-line-whitespace',
-      label: '空白だけの行を空行に',
+      kind: 'invisible',
+      label: '見えない文字を削除',
       count: result.count,
-      lines: result.lines
+      lines: result.lines,
+      changes: result.changes
     });
-    notify(`${result.lines}行から空白を削除しました`);
+    notify(`${result.lines}行から見えない文字${result.count}文字を削除・整理しました`);
   }
 
   function clearHistory() {
@@ -383,15 +446,15 @@
     }, 0);
   }
 
-  function ensureWhitespaceOnlyButton() {
+  function ensureInvisibleCleanupButton() {
     const grid = document.querySelector('.tool-grid');
-    if (!grid || grid.querySelector('[data-replace-action="trim-whitespace-only-lines"]')) return;
+    if (!grid || grid.querySelector('[data-replace-action="remove-invisible-characters"]')) return;
 
     const button = document.createElement('button');
     button.type = 'button';
-    button.dataset.replaceAction = 'trim-whitespace-only-lines';
-    button.textContent = '空白だけの行を空行に';
-    button.title = '文字がなく、半角・全角スペースやタブだけが入った行から空白を削除します';
+    button.dataset.replaceAction = 'remove-invisible-characters';
+    button.textContent = '見えない文字を削除';
+    button.title = '空行は残したまま、ゼロ幅スペース、NBSP、BOMや、空行に紛れたスペース・タブを削除します';
     button.style.gridColumn = '1 / -1';
     grid.appendChild(button);
 
@@ -408,7 +471,7 @@
       return;
     }
 
-    ensureWhitespaceOnlyButton();
+    ensureInvisibleCleanupButton();
     loadHistory();
     renderHistory();
 
@@ -419,7 +482,7 @@
       if (action === 'replace-next') replaceNext();
       if (action === 'replace-all') replaceAll();
       if (action === 'fullwidth-to-halfwidth') convertFullwidth();
-      if (action === 'trim-whitespace-only-lines') cleanupWhitespaceOnlyLines();
+      if (action === 'remove-invisible-characters') cleanupInvisibleCharacters();
       if (action === 'clear-history') clearHistory();
     });
     document.addEventListener('click', watchQuickPolish, true);
@@ -436,6 +499,7 @@
     replaceAllLiteral,
     replaceOneAtOrAfter,
     toHalfwidthAscii,
+    removeInvisibleCharacters,
     removeWhitespaceOnlyLines,
     countChangedSpan,
     visibleCharacter
