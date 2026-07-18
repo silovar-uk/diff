@@ -61,7 +61,7 @@ assert.deepEqual(result.changes, []);
 result = Replace.removeWhitespaceOnlyLines('本文\n   \n　\t　\r\n次の本文\n末尾');
 assert.equal(result.text, '本文\n\n\r\n次の本文\n末尾');
 assert.equal(result.lines, 2);
-assert.equal(result.count, 7);
+assert.equal(result.count, 6);
 
 result = Replace.removeWhitespaceOnlyLines(' 先頭に空白\n本文の後ろ  \n通常行');
 assert.equal(result.text, ' 先頭に空白\n本文の後ろ  \n通常行');
