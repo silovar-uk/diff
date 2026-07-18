@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" href="assets/app-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="app-v1.css" />
+  <link rel="stylesheet" href="replace-tools-v1.css" />
   <title>Text Review Studio v1</title>
 </head>
 <body>
@@ -43,9 +44,9 @@
           </section>
 
           <section class="side-block">
-            <header class="side-head"><small>FIND</small><strong>修正後から探す</strong></header>
+            <header class="side-head"><small>FIND &amp; REPLACE</small><strong>修正後を検索・置換</strong></header>
             <div class="side-search">
-              <input id="searchInput" type="search" placeholder="文字列を検索" aria-label="修正後の原稿を検索" />
+              <input id="searchInput" type="search" placeholder="検索する文字列" aria-label="修正後の原稿を検索" />
               <button class="tool-button" type="button" data-action="search-clear" aria-label="検索をクリア">×</button>
             </div>
             <div class="search-meta">
@@ -55,6 +56,28 @@
                 <button id="searchNext" type="button" data-action="search-next" aria-label="次の検索結果">→</button>
               </div>
             </div>
+            <div class="replace-field">
+              <label for="replaceInput">置換後の文字列</label>
+              <input id="replaceInput" type="text" placeholder="空欄なら削除" autocomplete="off" />
+            </div>
+            <div class="replace-actions">
+              <button type="button" data-replace-action="replace-next">次を置換</button>
+              <button type="button" data-replace-action="replace-all">すべて置換</button>
+            </div>
+            <div class="width-convert">
+              <button class="width-convert-button" type="button" data-replace-action="fullwidth-to-halfwidth">全角英数・記号を半角へ</button>
+              <small>全角スペース、英数字、記号を一括変換します。日本語・カナは変更しません。</small>
+            </div>
+          </section>
+
+          <section class="side-block">
+            <div class="replace-history-headline">
+              <header class="side-head"><small>SESSION HISTORY</small><strong>今回の置換履歴</strong></header>
+              <button class="history-clear-button" type="button" data-replace-action="clear-history">消去</button>
+            </div>
+            <div class="replace-history-summary"><span>このタブ内の操作</span><strong id="replaceHistoryCount">0件</strong></div>
+            <div id="replaceHistory" class="replace-history-list" aria-live="polite"></div>
+            <p class="replace-history-note">再読み込み後も同じタブでは残ります。直前の操作は右上の「↶」で元に戻せます。</p>
           </section>
 
           <section class="side-block">
@@ -165,6 +188,7 @@
 
   <script src="diff-engine-v1.js"></script>
   <script src="app-v1.js"></script>
+  <script src="replace-tools-v1.js"></script>
   <script src="xlsx-export-v1.js"></script>
 </body>
 </html>
