@@ -14,11 +14,12 @@ const uiRefresh = read('ui-refresh.css');
 const excel = read('xlsx-export-v1.js');
 const engine = read('diff-engine-v1.js');
 const replace = read('replace-tools-v1.js');
+const blankCleanup = read('blank-line-cleanup-v1.js');
 const replaceCss = read('replace-tools-v1.css');
 
 [
   'diff-engine-v1.js', 'app-v1.js', 'app-v1.css', 'ui-refresh.css', 'xlsx-export-v1.js',
-  'replace-tools-v1.js', 'replace-tools-v1.css', 'assets/app-icon.png'
+  'replace-tools-v1.js', 'blank-line-cleanup-v1.js', 'replace-tools-v1.css', 'assets/app-icon.png'
 ].forEach((file) => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
 
 [
@@ -38,7 +39,7 @@ const replaceCss = read('replace-tools-v1.css');
   'diff-core-hunk-bridge.js', 'diff-ignore-assets.js'
 ].forEach((file) => assert.ok(!html.includes(`src="${file}"`), `legacy runtime must not be loaded: ${file}`));
 
-['diff-engine-v1.js', 'app-v1.js', 'replace-tools-v1.js', 'xlsx-export-v1.js']
+['diff-engine-v1.js', 'app-v1.js', 'replace-tools-v1.js', 'blank-line-cleanup-v1.js', 'xlsx-export-v1.js']
   .forEach((file) => assert.ok(html.includes(`src="${file}"`), `v1 runtime missing: ${file}`));
 assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
 assert.ok(html.includes('href="ui-refresh.css"'), 'UI refresh styles must be loaded');
@@ -81,7 +82,10 @@ assert.ok(replace.includes('function toHalfwidthAscii('), 'fullwidth ASCII conve
 assert.ok(replace.includes("new Set(['～', '？'])"), 'wave dash and question mark must remain fullwidth');
 assert.ok(replace.includes('function removeInvisibleCharacters('), 'invisible-character cleanup is required');
 assert.ok(replace.includes("button.dataset.replaceAction = 'remove-invisible-characters'"), 'invisible-character cleanup button must be added');
-assert.ok(replace.includes("button.textContent = '見えない文字を削除'"), 'cleanup button must explain its actual behavior');
+assert.ok(replace.includes("button.textContent = '見えない文字を削除'"), 'base cleanup button must explain invisible-character behavior');
+assert.ok(blankCleanup.includes('function collapseExtraBlankLines('), 'extra blank lines must be collapsed after cleanup');
+assert.ok(blankCleanup.includes("button.textContent = '余分な空白を削除'"), 'cleanup button must use the user-facing blank-space wording');
+assert.ok(blankCleanup.includes("blankRun > 1"), 'one intentional blank line must remain');
 assert.ok(replace.includes('changes: result.changes'), 'conversion history must retain exact character changes');
 assert.ok(replace.includes('function createChangeList('), 'conversion details must render in history');
 assert.ok(replace.includes('sessionStorage'), 'replacement history must use session storage');
