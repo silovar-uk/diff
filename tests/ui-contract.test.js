@@ -79,10 +79,11 @@ assert.ok(replace.includes('function replaceAllLiteral('), 'literal replace-all 
 assert.ok(replace.includes('function replaceOneAtOrAfter('), 'single replacement is required');
 assert.ok(replace.includes('function toHalfwidthAscii('), 'fullwidth ASCII conversion is required');
 assert.ok(replace.includes("new Set(['～', '？'])"), 'wave dash and question mark must remain fullwidth');
-assert.ok(replace.includes('function removeWhitespaceOnlyLines('), 'whitespace-only line cleanup is required');
-assert.ok(replace.includes("button.dataset.replaceAction = 'trim-whitespace-only-lines'"), 'whitespace-only cleanup button must be added');
-assert.ok(replace.includes('changes: result.changes'), 'width conversion history must retain exact character changes');
-assert.ok(replace.includes('function createChangeList('), 'width conversion details must render in history');
+assert.ok(replace.includes('function removeInvisibleCharacters('), 'invisible-character cleanup is required');
+assert.ok(replace.includes("button.dataset.replaceAction = 'remove-invisible-characters'"), 'invisible-character cleanup button must be added');
+assert.ok(replace.includes("button.textContent = '見えない文字を削除'"), 'cleanup button must explain its actual behavior');
+assert.ok(replace.includes('changes: result.changes'), 'conversion history must retain exact character changes');
+assert.ok(replace.includes('function createChangeList('), 'conversion details must render in history');
 assert.ok(replace.includes('sessionStorage'), 'replacement history must use session storage');
 assert.ok(replaceCss.includes('.replace-history-list'), 'replacement history styles are required');
 assert.ok(uiRefresh.includes('.replace-history-changes'), 'detailed history styles are required');
