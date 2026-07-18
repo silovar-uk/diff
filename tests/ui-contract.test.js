@@ -10,13 +10,14 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const html = read('index.html');
 const app = read('app-v1.js');
 const css = read('app-v1.css');
+const uiRefresh = read('ui-refresh.css');
 const excel = read('xlsx-export-v1.js');
 const engine = read('diff-engine-v1.js');
 const replace = read('replace-tools-v1.js');
 const replaceCss = read('replace-tools-v1.css');
 
 [
-  'diff-engine-v1.js', 'app-v1.js', 'app-v1.css', 'xlsx-export-v1.js',
+  'diff-engine-v1.js', 'app-v1.js', 'app-v1.css', 'ui-refresh.css', 'xlsx-export-v1.js',
   'replace-tools-v1.js', 'replace-tools-v1.css', 'assets/app-icon.png'
 ].forEach((file) => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
 
@@ -40,6 +41,9 @@ const replaceCss = read('replace-tools-v1.css');
 ['diff-engine-v1.js', 'app-v1.js', 'replace-tools-v1.js', 'xlsx-export-v1.js']
   .forEach((file) => assert.ok(html.includes(`src="${file}"`), `v1 runtime missing: ${file}`));
 assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
+assert.ok(html.includes('href="ui-refresh.css"'), 'UI refresh styles must be loaded');
+assert.ok(html.includes('class="workflow-strip"'), 'workflow guidance must be visible');
+assert.ok(html.includes('class="tool-section"'), 'editing tools must be grouped into collapsible sections');
 
 const actions = [...html.matchAll(/data-action="([^"]+)"/g)].map((match) => match[1]);
 const uniqueActions = [...new Set(actions)];
@@ -74,13 +78,21 @@ assert.ok(replace.includes("const SESSION_KEY = 'text-review-studio-v1-replace-h
 assert.ok(replace.includes('function replaceAllLiteral('), 'literal replace-all is required');
 assert.ok(replace.includes('function replaceOneAtOrAfter('), 'single replacement is required');
 assert.ok(replace.includes('function toHalfwidthAscii('), 'fullwidth ASCII conversion is required');
+assert.ok(replace.includes("new Set(['～', '？'])"), 'wave dash and question mark must remain fullwidth');
+assert.ok(replace.includes('function removeWhitespaceOnlyLines('), 'whitespace-only line cleanup is required');
+assert.ok(replace.includes("button.dataset.replaceAction = 'trim-whitespace-only-lines'"), 'whitespace-only cleanup button must be added');
+assert.ok(replace.includes('changes: result.changes'), 'width conversion history must retain exact character changes');
+assert.ok(replace.includes('function createChangeList('), 'width conversion details must render in history');
 assert.ok(replace.includes('sessionStorage'), 'replacement history must use session storage');
 assert.ok(replaceCss.includes('.replace-history-list'), 'replacement history styles are required');
+assert.ok(uiRefresh.includes('.replace-history-changes'), 'detailed history styles are required');
 
 assert.ok(css.includes('.topbar {'), 'topbar styles are required');
 assert.ok(css.includes('z-index:2000'), 'copy menu must sit above sticky navigation');
 assert.ok(css.includes('.desk-toolbar {'), 'fixed mode controls are required');
 assert.ok(css.includes('position:sticky'), 'mode controls must remain visible while scrolling');
+assert.ok(uiRefresh.includes('.tool-section summary'), 'collapsible editing tool styles are required');
+assert.ok(uiRefresh.includes('.editor-pane.is-working'), 'working copy must be visually distinguished');
 
 assert.ok(excel.includes('root.TextReviewApp?.getComparison?.()'), 'Excel must reuse the page comparison model');
 assert.ok(excel.includes('part.type === changedType ? COLOR.red'), 'both Excel sides must use red changed text');
