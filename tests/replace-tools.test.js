@@ -26,11 +26,32 @@ assert.equal(result.end, 1);
 result = Replace.toHalfwidthAscii('ＡＢＣ１２３！　テスト・カナ');
 assert.equal(result.text, 'ABC123! テスト・カナ');
 assert.equal(result.count, 8);
+assert.deepEqual(result.changes, [
+  { from: 'Ａ', to: 'A', count: 1 },
+  { from: 'Ｂ', to: 'B', count: 1 },
+  { from: 'Ｃ', to: 'C', count: 1 },
+  { from: '１', to: '1', count: 1 },
+  { from: '２', to: '2', count: 1 },
+  { from: '３', to: '3', count: 1 },
+  { from: '！', to: '!', count: 1 },
+  { from: '　', to: ' ', count: 1 }
+]);
+
+result = Replace.toHalfwidthAscii('ＡＡ１１！！　　');
+assert.deepEqual(result.changes, [
+  { from: 'Ａ', to: 'A', count: 2 },
+  { from: '１', to: '1', count: 2 },
+  { from: '！', to: '!', count: 2 },
+  { from: '　', to: ' ', count: 2 }
+]);
 
 result = Replace.toHalfwidthAscii('日本語とカナはそのまま');
 assert.equal(result.text, '日本語とカナはそのまま');
 assert.equal(result.count, 0);
+assert.deepEqual(result.changes, []);
 
+assert.equal(Replace.visibleCharacter('　'), '全角スペース');
+assert.equal(Replace.visibleCharacter(' '), '半角スペース');
 assert.equal(Replace.countChangedSpan('abcXYZdef', 'abc123def'), 3);
 assert.equal(Replace.countChangedSpan('同じ', '同じ'), 0);
 
