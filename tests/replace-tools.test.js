@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const Replace = require('../replace-tools-v1.js');
+const BlankCleanup = require('../blank-line-cleanup-v1.js');
 
 let result = Replace.replaceAllLiteral('浦和レッズ 浦和レッズ', '浦和', 'URAWA');
 assert.deepEqual(result, { text: 'URAWAレッズ URAWAレッズ', count: 2 });
@@ -85,6 +86,21 @@ result = Replace.removeInvisibleCharacters('本文\n\n👨‍👩‍👧\n次の
 assert.equal(result.text, '本文\n\n👨‍👩‍👧\n次の本文');
 assert.equal(result.lines, 0);
 assert.equal(result.count, 0);
+
+// The reported case: one intentional blank line plus a whitespace-only line becomes one blank line.
+result = BlankCleanup.collapseExtraBlankLines('※ビジターチームを応援するご来場者を除く\n\n \nオリジナルグッズ販売について');
+assert.equal(result.text, '※ビジターチームを応援するご来場者を除く\n\nオリジナルグッズ販売について');
+assert.equal(result.lines, 1);
+
+// Invisible-only rows are treated as blank rows and consecutive runs collapse to one.
+result = BlankCleanup.collapseExtraBlankLines('本文\n\u200B\n\u00A0\n次の本文');
+assert.equal(result.text, '本文\n\u200B\n次の本文');
+assert.equal(result.lines, 1);
+
+// A single intentional blank line remains.
+result = BlankCleanup.collapseExtraBlankLines('本文\n\n次の本文');
+assert.equal(result.text, '本文\n\n次の本文');
+assert.equal(result.lines, 0);
 
 assert.deepEqual(Replace.removeWhitespaceOnlyLines('本文\n\uFEFF\n次'), Replace.removeInvisibleCharacters('本文\n\uFEFF\n次'));
 assert.equal(Replace.visibleCharacter('\u200B'), 'ゼロ幅スペース');
