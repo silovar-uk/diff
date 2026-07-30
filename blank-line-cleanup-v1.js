@@ -53,10 +53,20 @@
     toast.classList.add('is-visible');
   }
 
+  function loadPngExporter() {
+    if (document.querySelector('script[data-text-review-png]') || root.TextReviewPng) return;
+    const script = document.createElement('script');
+    script.src = 'png-export-v1.js';
+    script.dataset.textReviewPng = 'true';
+    script.addEventListener('error', () => notify('PNG出力機能を読み込めませんでした'));
+    document.head.appendChild(script);
+  }
+
   function boot() {
     if (booted || typeof document === 'undefined') return;
     booted = true;
     updateButtonLabel();
+    loadPngExporter();
 
     document.addEventListener('click', (event) => {
       const button = event.target.closest('[data-replace-action="remove-invisible-characters"]');
