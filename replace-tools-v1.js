@@ -32,6 +32,7 @@
 
   let history = [];
   let booted = false;
+  const expandedHistoryIds = new Set();
 
   function $(selector) {
     return document.querySelector(selector);
@@ -94,6 +95,124 @@
     const current = changes.get(key) || { from, to, count: 0 };
     current.count += 1;
     changes.set(key, current);
+  }
+
+  function collectChangeBlock(changes, removedValues, addedValues) {
+    const removed = Array.from(removedValues || '');
+    const added = Array.from(addedValues || '');
+    const length = Math.max(removed.length, added.length);
+    for (let index = 0; index < length; index += 1) {
+      const from = removed[index] || '';
+      const to = added[index] || '';
+      if (from !== to) recordChange(changes, from, to);
+    }
+  }
+
+  function fallbackCharacterDiff(before, after) {
+    const left = Array.from(before);
+    const right = Array.from(after);
+    const n = left.length;
+    const m = right.length;
+    const parts = [];
+    const push = (type, value) => {
+      if (!value) return;
+      const previous = parts[parts.length - 1];
+      if (previous && previous.type === type) previous.value += value;
+      else parts.push({ type, value });
+    };
+
+    if (n * m <= 220000) {
+      const width = m + 1;
+      const matrix = new Uint32Array((n + 1) * (m + 1));
+      const at = (i, j) => i * width + j;
+      for (let i = n - 1; i >= 0; i -= 1) {
+        for (let j = m - 1; j >= 0; j -= 1) {
+          matrix[at(i, j)] = left[i] === right[j]
+            ? matrix[at(i + 1, j + 1)] + 1
+            : Math.max(matrix[at(i + 1, j)], matrix[at(i, j + 1)]);
+        }
+      }
+      let i = 0;
+      let j = 0;
+      while (i < n && j < m) {
+        if (left[i] === right[j]) {
+          push('same', left[i]);
+          i += 1;
+          j += 1;
+        } else if (matrix[at(i + 1, j)] >= matrix[at(i, j + 1)]) {
+          push('remove', left[i++]);
+        } else {
+          push('add', right[j++]);
+        }
+      }
+      while (i < n) push('remove', left[i++]);
+      while (j < m) push('add', right[j++]);
+      return parts;
+    }
+
+    let prefix = 0;
+    const short = Math.min(n, m);
+    while (prefix < short && left[prefix] === right[prefix]) prefix += 1;
+    let endLeft = n - 1;
+    let endRight = m - 1;
+    while (endLeft >= prefix && endRight >= prefix && left[endLeft] === right[endRight]) {
+      endLeft -= 1;
+      endRight -= 1;
+    }
+    push('same', left.slice(0, prefix).join(''));
+    push('remove', left.slice(prefix, endLeft + 1).join(''));
+    push('add', right.slice(prefix, endRight + 1).join(''));
+    push('same', left.slice(endLeft + 1).join(''));
+    return parts;
+  }
+
+  function changeParts(before, after) {
+    const core = root.TextReviewDiffCore;
+    if (core && typeof core.diffText === 'function') {
+      try {
+        const result = core.diffText(before, after, { ignoreHtmlTags: false });
+        if (Array.isArray(result?.parts)) return result.parts;
+      } catch (_) { /* Fall through to the smaller character diff. */ }
+    }
+
+    if (core && typeof core._lcsDiff === 'function') {
+      try {
+        return core._lcsDiff(Array.from(before), Array.from(after)).map((part) => ({
+          type: part.type,
+          value: Array.isArray(part.values) ? part.values.join('') : String(part.value || '')
+        }));
+      } catch (_) { /* Fall through to the local character diff. */ }
+    }
+
+    return fallbackCharacterDiff(before, after);
+  }
+
+  function summarizeTextChanges(beforeText, afterText) {
+    const before = String(beforeText || '');
+    const after = String(afterText || '');
+    if (before === after) return [];
+
+    const changes = new Map();
+    const parts = changeParts(before, after);
+    let removed = '';
+    let added = '';
+    const flush = () => {
+      collectChangeBlock(changes, removed, added);
+      removed = '';
+      added = '';
+    };
+
+    parts.forEach((part) => {
+      const value = Array.isArray(part.values) ? part.values.join('') : String(part.value || '');
+      if (part.type === 'same') {
+        flush();
+        return;
+      }
+      if (part.type === 'remove') removed += value;
+      if (part.type === 'add') added += value;
+    });
+    flush();
+    return [...changes.values()];
   }
 
   function toHalfwidthAscii(text) {
@@ -252,15 +371,18 @@
     if (entry.kind === 'blank-line-whitespace') {
       return `${entry.lines}行から空白${entry.count}文字を削除`;
     }
+    if (entry.kind === 'transform') {
+      const types = Array.isArray(entry.changes) ? entry.changes.length : 0;
+      return `${entry.count || 1}文字程度を変更${types ? `・${types}種類` : ''}`;
+    }
     return `${entry.count || 1}文字程度を変更`;
   }
 
   function createChangeList(entry) {
-    const supported = entry.kind === 'width' || entry.kind === 'invisible';
-    if (!supported || !Array.isArray(entry.changes) || !entry.changes.length) return null;
+    if (!Array.isArray(entry.changes) || !entry.changes.length) return null;
     const list = document.createElement('div');
     list.className = 'replace-history-changes';
-    list.setAttribute('aria-label', entry.kind === 'width' ? '変換した文字の一覧' : '削除・整理した見えない文字の一覧');
+    list.setAttribute('aria-label', '変更した文字の一覧');
 
     entry.changes.slice(0, MAX_VISIBLE_CHANGES).forEach((change) => {
       const chip = document.createElement('span');
@@ -286,6 +408,29 @@
     return list;
   }
 
+  function createHistoryToggle(entry, isLatest, hasChanges) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'history-toggle-button';
+
+    if (!hasChanges) {
+      button.textContent = '変更文字の記録なし';
+      button.disabled = true;
+      return button;
+    }
+
+    button.dataset.replaceAction = 'toggle-history-changes';
+    button.dataset.historyId = entry.id;
+    button.setAttribute('aria-expanded', isLatest || expandedHistoryIds.has(entry.id) ? 'true' : 'false');
+    if (isLatest) {
+      button.textContent = '最新の変更文字を表示中';
+      button.disabled = true;
+    } else {
+      button.textContent = expandedHistoryIds.has(entry.id) ? '変更文字を閉じる' : '変更文字を確認';
+    }
+    return button;
+  }
+
   function renderHistory() {
     const target = $('#replaceHistory');
     const count = $('#replaceHistoryCount');
@@ -301,9 +446,12 @@
       return;
     }
 
-    [...history].reverse().forEach((entry) => {
+    [...history].reverse().forEach((entry, index) => {
+      const isLatest = index === 0;
       const item = document.createElement('article');
-      item.className = 'replace-history-item';
+      item.className = `replace-history-item${isLatest ? ' is-latest' : ''}`;
+      item.dataset.historyId = entry.id;
+
       const head = document.createElement('div');
       head.className = 'replace-history-head';
       const title = document.createElement('strong');
@@ -312,13 +460,28 @@
       time.dateTime = entry.at;
       time.textContent = timeLabel(entry.at);
       head.append(title, time);
+
       const detail = document.createElement('p');
       detail.textContent = historyDescription(entry);
-      item.append(head, detail);
       const changes = createChangeList(entry);
-      if (changes) item.appendChild(changes);
+      const toggleRow = document.createElement('div');
+      toggleRow.className = 'history-toggle-row';
+      toggleRow.appendChild(createHistoryToggle(entry, isLatest, Boolean(changes)));
+      item.append(head, detail, toggleRow);
+
+      if (changes) {
+        changes.hidden = !isLatest && !expandedHistoryIds.has(entry.id);
+        item.appendChild(changes);
+      }
       target.appendChild(item);
     });
+  }
+
+  function toggleHistoryChanges(historyId) {
+    if (!historyId || history[history.length - 1]?.id === historyId) return;
+    if (expandedHistoryIds.has(historyId)) expandedHistoryIds.delete(historyId);
+    else expandedHistoryIds.add(historyId);
+    renderHistory();
   }
 
   function dispatchEditorInput(editor, nextText, selectionStart, selectionEnd) {
@@ -361,7 +524,14 @@
     }
 
     dispatchEditorInput(editor, result.text, result.start, result.end);
-    addHistory({ kind: 'replace', label: '次を置換', from: query, to: replacement, count: 1 });
+    addHistory({
+      kind: 'replace',
+      label: '次を置換',
+      from: query,
+      to: replacement,
+      count: 1,
+      changes: [{ from: query, to: replacement, count: 1 }]
+    });
     notify(result.wrapped ? '先頭へ戻って1件置換しました' : '1件置換しました');
   }
 
@@ -381,7 +551,14 @@
     }
 
     dispatchEditorInput(editor, result.text, 0, 0);
-    addHistory({ kind: 'replace', label: 'すべて置換', from: query, to: replacement, count: result.count });
+    addHistory({
+      kind: 'replace',
+      label: 'すべて置換',
+      from: query,
+      to: replacement,
+      count: result.count,
+      changes: [{ from: query, to: replacement, count: result.count }]
+    });
     notify(`${result.count}件置換しました`);
   }
 
@@ -396,7 +573,7 @@
 
     const cursor = editor.selectionStart;
     dispatchEditorInput(editor, result.text, Math.min(cursor, result.text.length), Math.min(cursor, result.text.length));
-    addHistory({ kind: 'width', label: '全角英数・記号を半角へ', count: result.count, changes: result.changes });
+    addHistory({ kind: 'width', label: '全角を半角へ', count: result.count, changes: result.changes });
     notify(`${result.count}文字を半角へ変換しました（～・？は対象外）`);
   }
 
@@ -424,6 +601,7 @@
   function clearHistory() {
     if (!history.length) return;
     history = [];
+    expandedHistoryIds.clear();
     saveHistory();
     renderHistory();
     notify('今回の置換履歴を消去しました');
@@ -441,7 +619,8 @@
       addHistory({
         kind: 'transform',
         label: ACTION_LABELS[button.dataset.action],
-        count: countChangedSpan(before, after)
+        count: countChangedSpan(before, after),
+        changes: summarizeTextChanges(before, after)
       });
     }, 0);
   }
@@ -476,7 +655,8 @@
     renderHistory();
 
     document.addEventListener('click', (event) => {
-      const action = event.target.closest('[data-replace-action]')?.dataset.replaceAction;
+      const target = event.target.closest('[data-replace-action]');
+      const action = target?.dataset.replaceAction;
       if (!action) return;
       event.preventDefault();
       if (action === 'replace-next') replaceNext();
@@ -484,6 +664,7 @@
       if (action === 'fullwidth-to-halfwidth') convertFullwidth();
       if (action === 'remove-invisible-characters') cleanupInvisibleCharacters();
       if (action === 'clear-history') clearHistory();
+      if (action === 'toggle-history-changes') toggleHistoryChanges(target.dataset.historyId);
     });
     document.addEventListener('click', watchQuickPolish, true);
 
@@ -498,6 +679,7 @@
     boot,
     replaceAllLiteral,
     replaceOneAtOrAfter,
+    summarizeTextChanges,
     toHalfwidthAscii,
     removeInvisibleCharacters,
     removeWhitespaceOnlyLines,
