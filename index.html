@@ -73,9 +73,21 @@
                 <button type="button" data-replace-action="replace-next">次を置換</button>
                 <button type="button" data-replace-action="replace-all">すべて置換</button>
               </div>
-              <div class="width-convert">
-                <button class="width-convert-button" type="button" data-replace-action="fullwidth-to-halfwidth">全角英数・記号を半角へ</button>
-                <small>変換した文字は、下の操作履歴に「Ａ→A」の形で残ります。</small>
+            </div>
+          </details>
+
+          <details class="tool-section">
+            <summary>
+              <span><small>QUICK POLISH</small><strong>よく使う整形</strong></span>
+              <em>5項目</em>
+            </summary>
+            <div class="tool-section-body">
+              <div class="tool-grid">
+                <button type="button" data-action="transform-space">空白を整理</button>
+                <button type="button" data-replace-action="fullwidth-to-halfwidth">全角を半角へ</button>
+                <button type="button" data-action="transform-symbol">記号を統一</button>
+                <button type="button" data-action="transform-notation">表記を統一</button>
+                <button type="button" data-action="transform-newline">空行を整理</button>
               </div>
             </div>
           </details>
@@ -91,22 +103,7 @@
                 <button class="history-clear-button" type="button" data-replace-action="clear-history">履歴を消去</button>
               </div>
               <div id="replaceHistory" class="replace-history-list" aria-live="polite"></div>
-              <p class="replace-history-note">再読み込み後も同じタブでは残ります。直前の本文操作は右上の「↶」で元に戻せます。</p>
-            </div>
-          </details>
-
-          <details class="tool-section">
-            <summary>
-              <span><small>QUICK POLISH</small><strong>よく使う整形</strong></span>
-              <em>4項目</em>
-            </summary>
-            <div class="tool-section-body">
-              <div class="tool-grid">
-                <button type="button" data-action="transform-space">空白を整理</button>
-                <button type="button" data-action="transform-symbol">記号を統一</button>
-                <button type="button" data-action="transform-notation">表記を統一</button>
-                <button type="button" data-action="transform-newline">空行を整理</button>
-              </div>
+              <p class="replace-history-note">最新の変更文字は常に表示します。過去の履歴は「変更文字を確認」で開閉できます。直前の本文操作は右上の「↶」で元に戻せます。</p>
             </div>
           </details>
 
