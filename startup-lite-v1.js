@@ -2,14 +2,22 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'text-review-studio-v1';
+  const STORAGE_KEYS = [
+    'text-review-studio-v1',
+    'text-review-studio-v0.6.3',
+    'text-review-studio-v0.6.2',
+    'text-review-studio-v0.6.1',
+    'text-review-studio-v0.6.0'
+  ];
+
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
+    STORAGE_KEYS.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
       const data = JSON.parse(raw);
       data.mode = 'edit';
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
+      localStorage.setItem(key, JSON.stringify(data));
+    });
   } catch (_) { /* Keep startup resilient if storage is unavailable or malformed. */ }
 
   const Diff = window.TextReviewDiffCore;
