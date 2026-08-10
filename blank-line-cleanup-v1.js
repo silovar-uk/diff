@@ -62,11 +62,21 @@
     document.head.appendChild(script);
   }
 
+  function loadDiffRestore() {
+    if (document.querySelector('script[data-text-review-restore]') || root.TextReviewRestore) return;
+    const script = document.createElement('script');
+    script.src = 'diff-restore-v1.js';
+    script.dataset.textReviewRestore = 'true';
+    script.addEventListener('error', () => notify('差分の復元機能を読み込めませんでした'));
+    document.head.appendChild(script);
+  }
+
   function boot() {
     if (booted || typeof document === 'undefined') return;
     booted = true;
     updateButtonLabel();
     loadPngExporter();
+    loadDiffRestore();
 
     document.addEventListener('click', (event) => {
       const button = event.target.closest('[data-replace-action="remove-invisible-characters"]');
