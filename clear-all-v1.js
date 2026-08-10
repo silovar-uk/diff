@@ -49,7 +49,7 @@
   }
 
   document.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-action="clear-all"]');
+    const button = event.target.closest('[data-clear-all]');
     if (!button) return;
     event.preventDefault();
     event.stopPropagation();
