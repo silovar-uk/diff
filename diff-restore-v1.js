@@ -193,18 +193,9 @@
     editor.value = nextAfter;
     editor.dispatchEvent(new Event('input', { bubbles: true }));
 
-    // Repaint immediately, then force the existing app history to store this as one Undo step.
     App.recalculate();
     forceUndoCheckpoint();
     notify('変更前の表記に戻しました（HTMLタグは保持）');
-  }
-
-  function decorateRestoreButtons() {
-    document.querySelectorAll('[data-diff-index]').forEach((button) => {
-      button.textContent = '→';
-      button.title = 'この差分だけ変更前の表記に戻す（HTMLタグは保持）';
-      button.setAttribute('aria-label', 'この差分だけ変更前の表記に戻す。修正後のHTMLタグは保持します');
-    });
   }
 
   document.addEventListener('click', (event) => {
@@ -214,13 +205,6 @@
     event.stopPropagation();
     restoreRow(Number(button.dataset.diffIndex));
   }, true);
-
-  const diffRows = document.querySelector('#diffRows');
-  if (diffRows) {
-    const observer = new MutationObserver(decorateRestoreButtons);
-    observer.observe(diffRows, { childList: true, subtree: true });
-    decorateRestoreButtons();
-  }
 
   window.TextReviewRestore = {
     visibleText,
