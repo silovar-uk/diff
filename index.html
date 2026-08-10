@@ -143,6 +143,7 @@
               <button id="editModeButton" class="is-active" type="button" data-action="mode-edit">原稿を編集</button>
               <button id="compareModeButton" type="button" data-action="mode-compare">差分を比較</button>
             </div>
+            <button class="quiet-button danger" type="button" data-action="clear-all" title="変更前・修正後の原稿をすべて削除" aria-label="変更前と修正後の原稿をすべて削除" style="min-height:28px;padding:4px 7px;border-color:transparent;background:transparent;font-size:9px;font-weight:800;opacity:.72;">削除</button>
             <label id="compareOptions" class="compare-option" hidden>
               <input id="ignoreHtmlTagsToggle" type="checkbox" checked />
               <span>HTMLタグを差分から除外</span>
@@ -218,6 +219,7 @@
 
   <script src="diff-engine-v1.js"></script>
   <script src="app-v1.js"></script>
+  <script src="clear-all-v1.js"></script>
   <script src="replace-tools-v1.js"></script>
   <script src="blank-line-cleanup-v1.js"></script>
   <script src="xlsx-export-v1.js"></script>
