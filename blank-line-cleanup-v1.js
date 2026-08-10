@@ -62,11 +62,37 @@
     document.head.appendChild(script);
   }
 
+  function loadDiffRestore() {
+    if (document.querySelector('script[data-text-review-restore]') || root.TextReviewRestore) return;
+    const script = document.createElement('script');
+    script.src = 'diff-restore-v1.js';
+    script.dataset.textReviewRestore = 'true';
+    script.addEventListener('error', () => notify('差分の復元機能を読み込めませんでした'));
+    document.head.appendChild(script);
+  }
+
+  function ensureEditMode() {
+    const compareView = document.querySelector('#compareView');
+    const editButton = document.querySelector('[data-action="mode-edit"]');
+    if (compareView && !compareView.hidden && editButton) editButton.click();
+  }
+
+  function installRestoreButtonStyle() {
+    if (document.querySelector('style[data-text-review-restore-style]')) return;
+    const style = document.createElement('style');
+    style.dataset.textReviewRestoreStyle = 'true';
+    style.textContent = '.diff-marker{font-size:0}.diff-marker::before{content:"→";font-size:14px}';
+    document.head.appendChild(style);
+  }
+
   function boot() {
     if (booted || typeof document === 'undefined') return;
     booted = true;
     updateButtonLabel();
+    ensureEditMode();
+    installRestoreButtonStyle();
     loadPngExporter();
+    loadDiffRestore();
 
     document.addEventListener('click', (event) => {
       const button = event.target.closest('[data-replace-action="remove-invisible-characters"]');
