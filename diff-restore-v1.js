@@ -201,9 +201,7 @@
 
   function decorateRestoreButtons() {
     document.querySelectorAll('[data-diff-index]').forEach((button) => {
-      if (button.dataset.restoreDecorated === 'true') return;
-      button.dataset.restoreDecorated = 'true';
-      if (button.textContent !== '→') button.textContent = '→';
+      button.textContent = '→';
       button.title = 'この差分だけ変更前の表記に戻す（HTMLタグは保持）';
       button.setAttribute('aria-label', 'この差分だけ変更前の表記に戻す。修正後のHTMLタグは保持します');
     });
