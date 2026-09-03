@@ -48,6 +48,34 @@
     notify('変更前・修正後の原稿を削除しました');
   }
 
+  function installChatGPTReviewButton() {
+    if (document.querySelector('#chatgptReviewButton')) return;
+    const topActions = document.querySelector('.top-actions');
+    const copyWrap = topActions?.querySelector('.copy-wrap');
+    if (!topActions || !copyWrap) return;
+
+    const button = document.createElement('button');
+    button.id = 'chatgptReviewButton';
+    button.type = 'button';
+    button.className = 'secondary-button';
+    button.disabled = true;
+    button.textContent = 'ChatGPTで差分意図を検討';
+    button.title = '元原稿・変更版・差分一覧をChatGPTに送り、変更意図を分析します';
+    button.setAttribute('aria-label', button.title);
+    button.style.minHeight = '34px';
+    button.style.padding = '7px 11px';
+    button.style.whiteSpace = 'nowrap';
+    button.style.fontSize = '11px';
+    button.style.fontWeight = '800';
+
+    topActions.insertBefore(button, copyWrap);
+
+    const script = document.createElement('script');
+    script.src = 'chatgpt-review.js';
+    script.defer = true;
+    document.body.appendChild(script);
+  }
+
   document.addEventListener('click', (event) => {
     const button = event.target.closest('[data-clear-all]');
     if (!button) return;
@@ -55,4 +83,10 @@
     event.stopPropagation();
     clearAll();
   }, true);
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installChatGPTReviewButton, { once: true });
+  } else {
+    installChatGPTReviewButton();
+  }
 })();
