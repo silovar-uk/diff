@@ -71,8 +71,9 @@
     topActions.insertBefore(button, copyWrap);
 
     const script = document.createElement('script');
-    script.src = 'chatgpt-review.js';
-    script.defer = true;
+    script.src = 'chatgpt-review.js?v=20260903-2';
+    script.async = false;
+    script.dataset.chatgptReviewLoader = 'true';
     document.body.appendChild(script);
   }
 
