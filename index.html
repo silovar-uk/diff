@@ -148,6 +148,7 @@
               <input id="ignoreHtmlTagsToggle" type="checkbox" checked />
               <span>HTMLタグを差分から除外</span>
             </label>
+            <button id="chatgptReviewButton" class="quiet-button" type="button" title="元原稿・変更版・差分一覧をChatGPTに渡して変更意図を分析" aria-label="ChatGPTで差分意図を分析" disabled>ChatGPTで差分意図を分析</button>
             <span class="toolbar-spacer"></span>
             <span id="toolbarSummary" class="toolbar-summary">まず左右に原稿を貼ります</span>
             <button class="quiet-button" type="button" data-action="open-display">表示設定</button>
@@ -220,6 +221,7 @@
   <script src="diff-engine-v1.js"></script>
   <script src="startup-history-v1.js"></script>
   <script src="app-v1.js"></script>
+  <script src="chatgpt-review-v1.js"></script>
   <script src="clear-all-v1.js"></script>
   <script src="replace-tools-v1.js"></script>
   <script src="blank-line-cleanup-v1.js"></script>
