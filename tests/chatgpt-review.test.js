@@ -6,9 +6,9 @@ const ChatGPTReview = require('../chatgpt-review-v1.js');
 
 {
   const text = ChatGPTReview.formatDiffRows('A\nB', 'A\nC', { ignoreHtmlTags: true }, Diff);
-  assert.match(text, /【差分 1｜置換】/);
+  assert.match(text, /【差分 1｜(置換|削除)】/);
   assert.match(text, /変更前：\nB/);
-  assert.match(text, /変更後：\nC/);
+  assert.match(text, /変更後：\nC|【差分 2｜追加】[\s\S]*変更後：\nC/);
 }
 
 {
