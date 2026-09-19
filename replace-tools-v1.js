@@ -436,6 +436,7 @@
     const count = $('#replaceHistoryCount');
     if (!target || !count) return;
     count.textContent = `${history.length}件`;
+    count.closest('.history-section')?.setAttribute('data-empty', String(history.length === 0));
     target.replaceChildren();
 
     if (!history.length) {

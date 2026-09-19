@@ -1,0 +1,132 @@
+/* Integration checks for the active HTML and every shipped module.
+ * Run: npm run test:dom (requires npm install).
+ * DOM emulation checks behavior; it does not verify browser layout.
+ */
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { JSDOM } = require('jsdom');
+const root = path.resolve(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]);
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function workspace(mobile = false, saved = null) {
+  const dom = new JSDOM(html, { url: 'https://example.test/', runScripts: 'outside-only', pretendToBeVisual: true });
+  const w = dom.window;
+  w.matchMedia = query => ({ matches: query.includes('767') && mobile, addEventListener() {} });
+  w.HTMLElement.prototype.scrollIntoView = function () {};
+  w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  w.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new w.Event('close')); };
+  w.confirm = () => true;
+  w.open = () => ({ closed: false, location: {}, close() { this.closed = true; } });
+  let clipboard = '';
+  Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async text => { clipboard = text; }, readText: async () => clipboard } });
+  if (saved) w.localStorage.setItem('text-review-studio-v1', JSON.stringify(saved));
+  // Wait for jsdom's native DOMContentLoaded, then execute the actual module load order.
+  await wait(0);
+  [...scripts, 'png-export-v1.js', 'diff-restore-v1.js'].forEach(file => w.eval(fs.readFileSync(path.join(root, file), 'utf8')));
+  const $ = selector => w.document.querySelector(selector);
+  const input = (selector, text) => { $(selector).value = text; $(selector).dispatchEvent(new w.Event('input', { bubbles:true })); };
+  const click = selector => { assert.ok($(selector), selector); $(selector).click(); };
+  await wait(20);
+  return { dom, w, $, input, click, clipboard: () => clipboard };
+}
+
+(async () => {
+  for (const mobile of [false, true]) {
+    const { dom, w, $, input, click, clipboard } = await workspace(mobile);
+    assert.equal($('.quick-polish-section').tagName, 'SECTION');
+    assert.equal($('#otherEditTools').open, !mobile);
+    assert.equal(w.document.querySelectorAll('details.tool-section[open]').length, 0);
+    assert.equal($('#workflowStrip').hidden, false);
+    assert.equal($('#chatgptReviewButton').hidden, true);
+    input('#baselineText', 'one\ntwo\nthree\nfour');
+    assert.equal($('#workflowStrip').hidden, true, 'guide hides immediately');
+    input('#workingText', 'ONE\ntwo\nTHREE\nfour\nfive');
+    await wait(280);
+    click('#compareModeButton');
+    assert.equal(w.document.body.dataset.workspaceMode, 'compare');
+    assert.equal($('#chatgptReviewButton').hidden, false);
+    assert.equal($('#chatgptReviewButton').disabled, false);
+    const summary = w.TextReviewApp.getComparison().summary;
+    assert.equal(Number($('#diffTotal').textContent), summary.changes);
+    assert.equal($('#diffMap').children.length, summary.changes);
+    assert.ok(summary.changes > 1);
+    const firstStatus = $('#diffNavStatus').textContent;
+    w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', {key:'j',bubbles:true}));
+    assert.notEqual($('#diffNavStatus').textContent, firstStatus);
+    const movedStatus = $('#diffNavStatus').textContent;
+    $('#workingText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'k',bubbles:true}));
+    assert.equal($('#diffNavStatus').textContent, movedStatus, 'input does not navigate');
+    const mapButton = $('#diffMap button');
+    const beforeMapClick = $('#workingText').value;
+    mapButton.focus(); mapButton.click();
+    assert.equal($('#workingText').value, beforeMapClick, 'map navigates without restoring text');
+    assert.equal(mapButton.getAttribute('aria-current'), 'true');
+    assert.equal(w.document.activeElement, mapButton, 'map focus survives navigation');
+    click('[data-action="open-display"]');
+    $('#ignoreHtmlTagsToggle').checked = false;
+    click('[data-action="close-display"]');
+    assert.equal($('#ignoreHtmlTagsToggle').checked, true, 'cancel restores comparison option');
+    click('[data-action="open-display"]');
+    $('#ignoreHtmlTagsToggle').checked = false;
+    click('[data-action="apply-display"]');
+    assert.equal(w.TextReviewApp.getState().compareOptions.ignoreHtmlTags, false);
+    click('#editModeButton');
+    assert.equal($('#chatgptReviewButton').hidden, true);
+    input('#workingText', 'ＡＢＣ　様々  one one');
+    await wait(750);
+    click('[data-replace-action="fullwidth-to-halfwidth"]');
+    await wait(750);
+    assert.ok($('#workingText').value.startsWith('ABC '));
+    input('#searchInput', 'one');
+    assert.equal($('#searchCount').textContent, '2件');
+    $('#replaceInput').value = 'two';
+    click('[data-replace-action="replace-all"]');
+    await wait(280);
+    assert.ok($('#workingText').value.endsWith('two two'));
+    assert.equal($('.history-section').dataset.empty, 'false');
+    click('#undoButton');
+    assert.ok($('#workingText').value.endsWith('one one'));
+    click('#redoButton');
+    assert.ok($('#workingText').value.endsWith('two two'));
+    $('#workingText').focus(); $('#workingText').setSelectionRange(0,3);
+    $('#workingText').dispatchEvent(new w.Event('select'));
+    assert.equal($('#selectionToolbar').hidden, false);
+    click('#selectionToolbar [data-tag="strong"]');
+    await wait(30);
+    assert.ok($('#workingText').value.startsWith('<strong>ABC</strong>'));
+    click('#copyButton'); click('[data-action="copy-html"]');
+    await wait(0);
+    assert.equal(clipboard(), $('#workingText').value);
+    assert.ok($('#exportDiffExcelButton'), 'Excel output remains available');
+    click('#moreMenuButton');
+    assert.equal($('#moreMenu').hidden, false);
+    w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
+    assert.equal($('#moreMenu').hidden, true);
+    assert.equal(w.document.activeElement, $('#moreMenuButton'));
+    click('#moreMenuButton'); click('[data-clear-all]');
+    await wait(280);
+    assert.equal($('#baselineText').value, '');
+    assert.equal($('#workingText').value, '');
+    assert.equal($('#workflowStrip').hidden, false);
+    assert.equal(w.document.body.dataset.workspaceMode, 'edit');
+    click('#undoButton');
+    assert.ok($('#workingText').value, 'clear-all remains undoable');
+    dom.window.close();
+  }
+  const restored = await workspace(false, {before:'before',after:'after',mode:'compare'});
+  assert.equal(restored.$('#workflowStrip').hidden, true);
+  assert.equal(restored.$('#compareView').hidden, false);
+  assert.equal(restored.$('#chatgptReviewButton').hidden, false);
+  assert.equal(restored.$('#chatgptReviewButton').disabled, false);
+  restored.dom.window.close();
+  const sample = await workspace();
+  sample.click('[data-action="load-sample"]');
+  assert.equal(sample.$('#workflowStrip').hidden, true);
+  assert.equal(sample.$('#chatgptReviewButton').disabled, false);
+  sample.dom.window.close();
+  console.log('workspace DOM integration: desktop/mobile state, restore, sample, compare, map, J/K, display, selection, replace, undo/redo, copy, clear passed');
+})().catch(error => { console.error(error); process.exit(1); });

@@ -13,7 +13,8 @@
     'baselineText', 'workingText', 'editModeButton', 'compareModeButton',
     'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
     'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
-    'displayWhitespace', 'displayUrls', 'searchInput', 'searchCount', 'toast'
+    'displayWhitespace', 'displayUrls', 'searchInput', 'searchCount', 'toast',
+    'workflowStrip', 'diffSummary', 'diffMap', 'selectionToolbar', 'moreMenu', 'moreMenuButton'
   ];
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -338,25 +339,26 @@
       const active = index === state.activeRowIndex ? ' is-active' : '';
       const symbol = marker(row.kind);
       const label = row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : '削除';
-      const rail = symbol ? `<button type="button" class="diff-marker ${row.kind}" data-diff-index="${index}" aria-label="${label}された差分へ移動">${symbol}</button>` : '';
+      const rail = symbol ? `<button type="button" class="diff-marker ${row.kind}" data-diff-index="${index}" title="${label}を変更前の表記に戻す（HTMLタグは保持）" aria-label="${label}を変更前の表記に戻す">${symbol}</button>` : '';
       return `<article class="diff-row${active}" data-diff-row="${index}"><div class="diff-cell before${beforeEmpty}">${renderInline(row, 'before')}</div><div class="diff-rail-cell">${rail}</div><div class="diff-cell after${afterEmpty}">${renderInline(row, 'after')}</div></article>`;
     }).join('');
     renderDiffNavigation();
   }
 
   function renderDiffNavigation() {
+    renderDiffMap();
     const changed = changedIndexes();
     const status = $('#diffNavStatus');
     const previous = $('#diffPrev');
     const next = $('#diffNext');
     if (!changed.length) {
-      status.textContent = '差分なし';
+      status.textContent = '0 / 0';
       previous.disabled = true;
       next.disabled = true;
       return;
     }
     const position = Math.max(0, changed.indexOf(state.activeRowIndex));
-    status.textContent = `差分 ${position + 1} / ${changed.length}`;
+    status.textContent = `${position + 1} / ${changed.length}`;
     previous.disabled = changed.length < 2;
     next.disabled = changed.length < 2;
   }
@@ -367,7 +369,7 @@
     state.activeRowIndex = index;
     $$('.diff-row').forEach((node) => node.classList.toggle('is-active', Number(node.dataset.diffRow) === index));
     renderDiffNavigation();
-    if (scroll) $(`[data-diff-row="${index}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (scroll) $(`[data-diff-row="${index}"]`)?.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }
 
   function moveDiff(direction) {
@@ -378,17 +380,81 @@
     selectDiff(changed[position]);
   }
 
+  function updateWorkflowVisibility() {
+    const empty = !state.before.trim() && !state.after.trim();
+    $('#workflowStrip').hidden = !empty;
+    document.body.dataset.workspaceState = empty ? 'empty' : state.mode;
+  }
+
+  function applyWorkspaceMode(mode) {
+    document.body.dataset.workspaceMode = mode;
+    $('.control-sidebar').dataset.workspaceMode = mode;
+    $('.control-sidebar').setAttribute('aria-label', mode === 'compare' ? '差分の概要' : '修正後の原稿を整えるツール');
+    $('#chatgptReviewButton').hidden = mode !== 'compare';
+    $('#diffSummary').hidden = mode !== 'compare';
+    $('#compareOptions').hidden = mode !== 'compare';
+    $('#editModeButton').setAttribute('aria-pressed', String(mode === 'edit'));
+    $('#compareModeButton').setAttribute('aria-pressed', String(mode === 'compare'));
+    updateWorkflowVisibility();
+    updateSelectionToolbar();
+  }
+
+  function renderReviewSummary() {
+    const summary = state.comparison.summary;
+    [['diffTotal', 'changes'], ['diffReplace', 'replaces'], ['diffInsert', 'inserts'], ['diffDelete', 'deletes']].forEach(([id, key]) => {
+      $(`#${id}`).textContent = summary[key];
+    });
+    $('#reviewOverview').textContent = !state.before || !state.after
+      ? '左右に原稿を入力すると比較できます。'
+      : summary.changes ? `${summary.changes}か所の変更` : '本文は一致しています';
+    $('#reviewDistribution').innerHTML = [['replace', 'replaces', '置換'], ['insert', 'inserts', '追加'], ['delete', 'deletes', '削除']].map(([kind, key, label]) =>
+      `<div class="review-stat ${kind}"><span>${marker(kind)} ${label}</span><strong>${summary[key]}</strong><div class="review-bar"><span style="width:${summary.changes ? summary[key] / summary.changes * 100 : 0}%"></span></div></div>`
+    ).join('');
+  }
+
+  function renderDiffMap() {
+    const map = $('#diffMap');
+    const indexes = changedIndexes();
+    // Keep buttons stable while navigating so keyboard focus is retained.
+    const signature = indexes.map(index => `${index}:${state.comparison.rows[index].kind}`).join(',') + `/${state.comparison.rows.length}`;
+    if (map.dataset.signature !== signature) {
+      map.dataset.signature = signature;
+      map.innerHTML = indexes.map((index, position) => {
+        const kind = state.comparison.rows[index].kind;
+        const label = { replace: '置換', insert: '追加', delete: '削除' }[kind];
+        return `<button type="button" class="diff-map-marker ${kind}" data-diff-index="${index}" style="top:${index / Math.max(1, state.comparison.rows.length) * 100}%" title="差分${position + 1}：${label}" aria-label="差分${position + 1}へ移動（${label}）">${marker(kind)}</button>`;
+      }).join('');
+    }
+    map.querySelectorAll('button').forEach(button => button.setAttribute('aria-current', String(Number(button.dataset.diffIndex) === state.activeRowIndex)));
+  }
+
+  function updateSelectionToolbar() {
+    const editor = $('#workingText');
+    const focus = document.activeElement;
+    const relevant = focus === editor || $('#selectionToolbar').contains(focus);
+    $('#selectionToolbar').hidden = state.mode !== 'edit' || !relevant || editor.selectionStart === editor.selectionEnd;
+  }
+
+  function closeMoreMenu(restoreFocus = false) {
+    $('#moreMenu').hidden = true;
+    $('#moreMenuButton').setAttribute('aria-expanded', 'false');
+    if (restoreFocus) $('#moreMenuButton').focus();
+  }
+
   function renderMode() {
+    applyWorkspaceMode(state.mode);
+    renderReviewSummary();
     const compare = state.mode === 'compare';
     $('#editModeButton').classList.toggle('is-active', !compare);
     $('#compareModeButton').classList.toggle('is-active', compare);
     $('#editorView').hidden = compare;
     $('#compareView').hidden = !compare;
-    $('#compareOptions').hidden = !compare;
+    window.TextReviewChatGPT?.updateButtonState($('#chatgptReviewButton'), $('#baselineText'), $('#workingText'));
     if (compare) renderComparison();
   }
 
   function updateStatus() {
+    updateWorkflowVisibility();
     const status = $('#analysisState');
     const summary = $('#toolbarSummary');
     $('#copyButton').disabled = !state.after;
@@ -574,6 +640,7 @@
   }
 
   function openDisplayDialog() {
+    $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
     $('#displayShowTags').checked = state.displayOptions.showTags;
     $('#displayWhitespace').checked = state.displayOptions.showWhitespace;
     $('#displayUrls').checked = state.displayOptions.highlightUrls;
@@ -581,13 +648,15 @@
   }
 
   function applyDisplay() {
+    state.compareOptions.ignoreHtmlTags = $('#ignoreHtmlTagsToggle').checked;
+    calculateComparison();
     state.displayOptions = {
       showTags: $('#displayShowTags').checked,
       showWhitespace: $('#displayWhitespace').checked,
       highlightUrls: $('#displayUrls').checked
     };
     $('#displayDialog').close();
-    renderComparison();
+    renderAll();
     persist();
     notify('表示設定を反映しました');
   }
@@ -649,6 +718,28 @@
   }
 
   function bind() {
+    const mobile = window.matchMedia('(max-width: 767px)');
+    const syncOtherTools = () => { $('#otherEditTools').open = !mobile.matches; };
+    syncOtherTools();
+    mobile.addEventListener('change', syncOtherTools);
+    document.addEventListener('selectionchange', updateSelectionToolbar);
+    document.addEventListener('focusin', updateSelectionToolbar);
+    $('#workingText').addEventListener('select', updateSelectionToolbar);
+    $('#workingText').addEventListener('input', updateSelectionToolbar);
+    $('#moreMenuButton').addEventListener('click', () => {
+      const opening = $('#moreMenu').hidden;
+      $('#moreMenu').hidden = !opening;
+      $('#moreMenuButton').setAttribute('aria-expanded', String(opening));
+      if (opening) $('#moreMenu button').focus();
+    });
+    document.addEventListener('focusin', event => {
+      if (!event.target.closest('.more-menu-wrap')) closeMoreMenu();
+    });
+    // Capture runs before clear-all's own handler; closing does not cancel its action.
+    document.addEventListener('click', event => {
+      if (!event.target.closest('.more-menu-wrap') || event.target.closest('[data-clear-all]')) closeMoreMenu();
+    }, true);
+
     $('#baselineText').addEventListener('input', (event) => {
       beginTyping();
       state.before = event.target.value;
@@ -663,12 +754,6 @@
       renderStats();
       updateStatus();
       computeSearch();
-    });
-    $('#ignoreHtmlTagsToggle').addEventListener('change', (event) => {
-      state.compareOptions.ignoreHtmlTags = event.target.checked;
-      calculateComparison();
-      renderAll();
-      persist();
     });
     $('#searchInput').addEventListener('input', (event) => {
       state.search.query = event.target.value;
@@ -718,6 +803,9 @@
       }
     });
 
+    $('#displayDialog').addEventListener('close', () => {
+      $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
+    });
     $('#displayDialog').addEventListener('click', (event) => {
       if (event.target === $('#displayDialog')) $('#displayDialog').close();
     });
@@ -725,11 +813,16 @@
       const editing = event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement || event.target.isContentEditable;
       if (event.key === 'Escape') {
         closeCopyMenu();
+        if (!$('#moreMenu').hidden) closeMoreMenu(true);
         if ($('#displayDialog').open) $('#displayDialog').close();
       }
       if (!editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         event.shiftKey ? redo() : undo();
+      }
+      if (!editing && !event.isComposing && !document.querySelector('dialog[open]') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && state.mode === 'compare') {
+        if (event.key.toLowerCase() === 'j') { event.preventDefault(); moveDiff(1); }
+        if (event.key.toLowerCase() === 'k') { event.preventDefault(); moveDiff(-1); }
       }
       if (!editing && state.mode === 'compare' && event.altKey && event.key === 'ArrowLeft') { event.preventDefault(); moveDiff(-1); }
       if (!editing && state.mode === 'compare' && event.altKey && event.key === 'ArrowRight') { event.preventDefault(); moveDiff(1); }

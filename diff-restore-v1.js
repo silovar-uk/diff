@@ -199,7 +199,7 @@
   }
 
   document.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-diff-index]');
+    const button = event.target.closest('.diff-marker[data-diff-index]');
     if (!button) return;
     event.preventDefault();
     event.stopPropagation();

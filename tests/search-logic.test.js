@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const app = fs.readFileSync(path.resolve(__dirname, '..', 'app.js'), 'utf8');
+const app = fs.readFileSync(path.resolve(__dirname, '..', 'app-v1.js'), 'utf8');
 
 function extractFunction(name) {
   const start = app.indexOf(`  function ${name}(`);
@@ -22,32 +22,26 @@ function extractFunction(name) {
   throw new Error(`function ${name} did not close`);
 }
 
+// Exercise the shipped literal-search implementation, not removed v0.6 regex helpers.
 const context = {
-  state: { search: { query: '', regex: false } },
-  escapeRegExp(value = '') { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  state: { after: '', search: { query: '', matches: [], current: -1 } },
+  renderSearch() {}
 };
 vm.createContext(context);
-vm.runInContext([
-  extractFunction('searchFlags'),
-  extractFunction('compileSearchPattern'),
-  extractFunction('collectSearchMatches'),
-  'globalThis.collectSearchMatches = collectSearchMatches;'
-].join('\n\n'), context);
-
-context.state.search = { query: '、[ \\t]*$', regex: true };
-let result = context.collectSearchMatches('一、\n二。\n三、  \n');
-assert.equal(result.error, '');
-assert.deepEqual(Array.from(result.matches, match => match.text), ['、', '、  ']);
-
-context.state.search = { query: '（', regex: false };
-result = context.collectSearchMatches('全角（を探す）');
-assert.equal(result.error, '');
-assert.equal(result.matches.length, 1);
-assert.equal(result.matches[0].text, '（');
-
-context.state.search = { query: '[', regex: true };
-result = context.collectSearchMatches('確認用');
-assert.ok(result.error, 'invalid regex must be reported instead of throwing');
-assert.equal(result.matches.length, 0);
-
-console.log('v0.6.6 search logic tests: passed');
+vm.runInContext(extractFunction('computeSearch') + '\nglobalThis.computeSearch = computeSearch;', context);
+for (const [text, query, positions] of [
+  ['一、\n二。\n三、  \n', '、', [1, 7]],
+  ['全角（を探す）', '（', [2]],
+  ['確認[用[', '[', [2, 4]],
+  ['aaaa', 'aa', [0, 2]],
+  ['確認用', '', []],
+  ['確認用', 'ない', []],
+  ['🙂🙂', '🙂', [0, 2]]
+]) {
+  context.state.after = text;
+  context.state.search.query = query;
+  context.computeSearch();
+  assert.deepEqual(Array.from(context.state.search.matches), positions);
+  assert.equal(context.state.search.current, positions.length ? 0 : -1);
+}
+console.log('v1 literal search tests: passed');

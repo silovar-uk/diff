@@ -117,3 +117,26 @@ assert.ok(!excel.includes("String(model.before || '').length"), 'Excel must not 
 assert.ok(!excel.includes("String(model.after || '').length"), 'Excel must not show result character counts');
 
 console.log('v1 unified runtime contract tests: passed');
+
+// State-driven workspace contract.
+assert.ok(html.includes('class="tool-section quick-polish-section"'));
+assert.match(html, /<section[^>]*class="tool-section quick-polish-section"/);
+assert.doesNotMatch(html, /<details[^>]*quick-polish/);
+const toolDetails = [...html.matchAll(/<details class="tool-section[^>]*>/g)].map(m => m[0]);
+assert.equal(toolDetails.length, 3);
+toolDetails.forEach(tag => assert.doesNotMatch(tag, /\bopen(?:[\s=>])/));
+assert.ok(html.indexOf('quickPolishTitle') < html.indexOf('searchInput'));
+assert.ok(html.indexOf('searchInput') < html.indexOf('CMSタグを追加'));
+assert.ok(html.indexOf('CMSタグを追加') < html.indexOf('replaceHistoryCount'));
+assert.ok(app.includes('updateWorkflowVisibility'));
+assert.ok(app.includes("$('#chatgptReviewButton').hidden = mode !== 'compare'"));
+assert.ok(html.includes('id="moreMenu"'));
+assert.match(html, /id="moreMenu"[^>]*hidden>[\s\S]*?data-clear-all/);
+assert.ok(!html.includes('原稿へ戻る'));
+['BEFORE / REFERENCE', 'AFTER / WORKING', 'QUICK POLISH', 'SESSION HISTORY', 'EDITING TOOLS'].forEach(label => assert.ok(!html.includes(label)));
+assert.match(html, /class="desk-toolbar"[\s\S]*?id="diffSummary"[\s\S]*?id="diffPrev"[\s\S]*?id="chatgptReviewButton"/);
+assert.ok(app.includes("mobile.addEventListener('change', syncOtherTools)"));
+assert.ok(app.includes("event.key.toLowerCase() === 'j'"));
+assert.ok(app.includes('!event.isComposing'));
+assert.ok(uiRefresh.includes('prefers-reduced-motion'));
+console.log('workspace redesign contract tests: passed');
