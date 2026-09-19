@@ -20,6 +20,8 @@ jobs:
         run: |
           node --check diff-engine-v1.js
           node --check app-v1.js
+          node --check chatgpt-review-v1.js
+          node --check clear-all-v1.js
           node --check replace-tools-v1.js
           node --check xlsx-export-v1.js
       - name: Regression tests
@@ -27,4 +29,5 @@ jobs:
           node tests/diff-tests.js
           node tests/line-alignment.test.js
           node tests/replace-tools.test.js
+          node tests/chatgpt-review.test.js
           node tests/ui-contract.test.js
