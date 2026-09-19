@@ -15,11 +15,13 @@ const excel = read('xlsx-export-v1.js');
 const engine = read('diff-engine-v1.js');
 const replace = read('replace-tools-v1.js');
 const blankCleanup = read('blank-line-cleanup-v1.js');
+const chatgptReview = read('chatgpt-review-v1.js');
+const clearAll = read('clear-all-v1.js');
 const replaceCss = read('replace-tools-v1.css');
 
 [
   'diff-engine-v1.js', 'app-v1.js', 'app-v1.css', 'ui-refresh.css', 'xlsx-export-v1.js',
-  'replace-tools-v1.js', 'blank-line-cleanup-v1.js', 'replace-tools-v1.css', 'assets/app-icon.png'
+  'replace-tools-v1.js', 'blank-line-cleanup-v1.js', 'chatgpt-review-v1.js', 'replace-tools-v1.css', 'assets/app-icon.png'
 ].forEach((file) => assert.ok(fs.existsSync(path.join(root, file)), `missing ${file}`));
 
 [
@@ -27,7 +29,7 @@ const replaceCss = read('replace-tools-v1.css');
   'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
   'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
   'displayWhitespace', 'displayUrls', 'searchInput', 'replaceInput',
-  'replaceHistory', 'replaceHistoryCount', 'toast'
+  'replaceHistory', 'replaceHistoryCount', 'chatgptReviewButton', 'toast'
 ].forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing v1 UI anchor: ${id}`));
 
 ['projectTitle', 'profileSelect', 'reviewRail', 'reviewPanel', 'workspaceDisplayDialog']
@@ -39,12 +41,22 @@ const replaceCss = read('replace-tools-v1.css');
   'diff-core-hunk-bridge.js', 'diff-ignore-assets.js'
 ].forEach((file) => assert.ok(!html.includes(`src="${file}"`), `legacy runtime must not be loaded: ${file}`));
 
-['diff-engine-v1.js', 'app-v1.js', 'replace-tools-v1.js', 'blank-line-cleanup-v1.js', 'xlsx-export-v1.js']
+['diff-engine-v1.js', 'app-v1.js', 'chatgpt-review-v1.js', 'replace-tools-v1.js', 'blank-line-cleanup-v1.js', 'xlsx-export-v1.js']
   .forEach((file) => assert.ok(html.includes(`src="${file}"`), `v1 runtime missing: ${file}`));
 assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
 assert.ok(html.includes('href="ui-refresh.css"'), 'UI refresh styles must be loaded');
 assert.ok(html.includes('class="workflow-strip"'), 'workflow guidance must be visible');
 assert.ok(html.includes('class="tool-section"'), 'editing tools must be grouped into collapsible sections');
+assert.equal((html.match(/id="chatgptReviewButton"/g) || []).length, 1, 'ChatGPT review button must be unique');
+assert.ok(html.indexOf('src="diff-engine-v1.js"') < html.indexOf('src="chatgpt-review-v1.js"'), 'ChatGPT module must load after the diff engine');
+assert.ok(html.indexOf('src="app-v1.js"') < html.indexOf('src="chatgpt-review-v1.js"'), 'ChatGPT module must load after the app controller');
+assert.ok(!clearAll.includes('chatgpt-review'), 'clear-all must not load or own ChatGPT integration');
+assert.ok(!clearAll.includes('chatgptReviewButton'), 'clear-all must not create the ChatGPT button');
+assert.ok(chatgptReview.includes('function buildPrompt('), 'ChatGPT integration must expose prompt generation');
+assert.ok(chatgptReview.includes('function buildLaunchPlan('), 'ChatGPT integration must isolate launch planning');
+assert.ok(chatgptReview.includes('function copyPrompt('), 'ChatGPT integration must isolate clipboard handoff');
+assert.ok(chatgptReview.includes('function openChatGPT('), 'ChatGPT integration must isolate ChatGPT opening');
+assert.ok(chatgptReview.includes('showManualPrompt'), 'clipboard failure must expose a manual-copy fallback');
 
 const actions = [...html.matchAll(/data-action="([^"]+)"/g)].map((match) => match[1]);
 const uniqueActions = [...new Set(actions)];
