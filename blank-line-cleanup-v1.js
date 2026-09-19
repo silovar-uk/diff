@@ -71,12 +71,6 @@
     document.head.appendChild(script);
   }
 
-  function ensureEditMode() {
-    const compareView = document.querySelector('#compareView');
-    const editButton = document.querySelector('[data-action="mode-edit"]');
-    if (compareView && !compareView.hidden && editButton) editButton.click();
-  }
-
   function installRestoreButtonStyle() {
     if (document.querySelector('style[data-text-review-restore-style]')) return;
     const style = document.createElement('style');
@@ -89,7 +83,6 @@
     if (booted || typeof document === 'undefined') return;
     booted = true;
     updateButtonLabel();
-    ensureEditMode();
     installRestoreButtonStyle();
     loadPngExporter();
     loadDiffRestore();

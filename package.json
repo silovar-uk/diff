@@ -1,0 +1,10 @@
+{
+  "name": "text-review-studio",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node tests/chatgpt-review.test.js && node tests/diff-tests.js && node tests/line-alignment.test.js && node tests/quiet-diff-tests.js && node tests/replace-tools.test.js && node tests/search-logic.test.js && node tests/ui-contract.test.js",
+    "test:dom": "node tests/workspace-dom.test.cjs"
+  },
+  "devDependencies": { "jsdom": "30.1.0" }
+}
