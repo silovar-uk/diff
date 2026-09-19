@@ -21,8 +21,8 @@ const ChatGPTReview = require('../chatgpt-review-v1.js');
 }
 
 {
-  const before = '<span class="info24-t2">販売対象試合</span>';
-  const after = '◆販売対象試合';
+  const before = '<strong>販売対象試合</strong>';
+  const after = '販売対象試合';
   const ignored = ChatGPTReview.formatDiffRows(before, after, { ignoreHtmlTags: true }, Diff);
   const raw = ChatGPTReview.formatDiffRows(before, after, { ignoreHtmlTags: false }, Diff);
   assert.equal(ignored, '差分なし', 'HTML-normalized equivalent text should be ignored');
