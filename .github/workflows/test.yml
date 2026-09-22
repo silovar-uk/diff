@@ -15,7 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
+      - name: Install test dependencies
+        run: npm ci
       - name: Syntax checks
         run: |
           node --check diff-engine-v1.js
@@ -25,9 +28,6 @@ jobs:
           node --check replace-tools-v1.js
           node --check xlsx-export-v1.js
       - name: Regression tests
-        run: |
-          node tests/diff-tests.js
-          node tests/line-alignment.test.js
-          node tests/replace-tools.test.js
-          node tests/chatgpt-review.test.js
-          node tests/ui-contract.test.js
+        run: npm test
+      - name: DOM integration
+        run: npm run test:dom
