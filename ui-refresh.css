@@ -283,3 +283,465 @@ body[data-workspace-mode="compare"] .edit-only { display:none !important; }
     grid-template-columns:1fr;
   }
 }
+
+
+/* Review-first workspace v2 — 2026-09-22 */
+
+/* Editing no longer reserves a left rail. Tools live with the working copy. */
+body[data-workspace-mode="edit"] .workspace-layout {
+  grid-template-columns:minmax(0,1fr);
+}
+body[data-workspace-mode="edit"] .control-sidebar {
+  display:none;
+}
+body[data-workspace-state="empty"] .working-tools {
+  display:none;
+}
+
+.workflow-start {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:24px;
+  align-items:center;
+  padding:22px 24px;
+}
+.workflow-start-copy {
+  min-width:0;
+}
+.workflow-start-copy small {
+  display:block;
+  margin-bottom:5px;
+  color:var(--ink-faint);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.workflow-start-copy strong {
+  display:block;
+  color:var(--ink);
+  font-size:18px;
+  letter-spacing:-.02em;
+}
+.workflow-start-copy p {
+  margin:6px 0 0;
+  color:var(--ink-soft);
+  font-size:11px;
+  line-height:1.6;
+}
+.workflow-start-actions {
+  display:flex;
+  gap:7px;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.start-paste {
+  display:inline-flex;
+  gap:7px;
+  align-items:center;
+  min-height:38px;
+  padding:7px 10px;
+  border:1px solid #d6dfef;
+  border-radius:9px;
+  color:#3c557b;
+  background:#fff;
+  font-size:11px;
+}
+.start-paste span {
+  display:grid;
+  width:20px;
+  height:20px;
+  place-items:center;
+  border-radius:999px;
+  color:#fff;
+  background:#5d78ad;
+  font-size:9px;
+  font-weight:900;
+}
+.start-paste.is-after span {
+  background:var(--green);
+}
+.start-paste:hover {
+  border-color:#b8c8e7;
+  background:#f7f9ff;
+}
+
+/* Working-copy tools: compact by default, details on demand. */
+.working-tools {
+  display:grid;
+  gap:5px;
+  padding:7px 10px;
+  border-bottom:1px solid var(--line);
+  background:#f8faff;
+}
+.working-tools .quick-polish-section {
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.working-tools .quick-polish-section .tool-section-static-head {
+  display:none;
+}
+.working-tools .quick-polish-section .tool-section-body {
+  padding:0;
+}
+.working-tools .quick-polish-section .tool-grid {
+  display:flex;
+  gap:4px;
+  flex-wrap:wrap;
+}
+.working-tools .quick-polish-section .tool-grid button {
+  min-height:28px;
+  padding:4px 7px;
+  border-radius:6px;
+  font-size:9px;
+}
+.working-tools .other-edit-tools {
+  border:0;
+}
+.working-tools .other-edit-tools > summary {
+  display:inline-flex !important;
+  align-items:center;
+  gap:5px;
+  width:max-content;
+  padding:3px 1px;
+  color:#627493;
+  font-size:9px;
+  font-weight:850;
+  cursor:pointer;
+  list-style:none;
+}
+.working-tools .other-edit-tools > summary::-webkit-details-marker {
+  display:none;
+}
+.working-tools .other-edit-tools > summary::after {
+  content:"＋";
+}
+.working-tools .other-edit-tools[open] > summary::after {
+  content:"−";
+}
+.working-tools .other-edit-tools[open] {
+  display:grid;
+  gap:5px;
+}
+.working-tools .other-edit-tools > .tool-section {
+  background:#fff;
+}
+
+/* Review progress is a first-class state, not just a counter. */
+.review-progress {
+  display:flex;
+  align-items:center;
+  min-height:27px;
+  padding:4px 8px;
+  border:1px solid #dce4ef;
+  border-radius:999px;
+  color:#61708b;
+  background:#fff;
+  font-size:10px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.review-progress strong {
+  color:var(--ink);
+  font-size:11px;
+}
+.review-progress.is-complete {
+  border-color:#bfe3d5;
+  color:#236b55;
+  background:#f1fbf6;
+}
+#finalPreviewButton.is-ready {
+  border-color:#bfe3d5;
+  color:#236b55;
+  background:#f1fbf6;
+}
+.review-sidebar-head {
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  justify-content:space-between;
+}
+.review-sidebar-head small {
+  display:block;
+  margin-bottom:3px;
+  color:var(--ink-faint);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.review-sidebar-head h2 {
+  margin:0;
+}
+.review-sidebar-head > strong {
+  color:var(--navy);
+  font-size:16px;
+  font-variant-numeric:tabular-nums;
+}
+.review-next-button {
+  width:100%;
+  min-height:34px;
+  margin-top:8px;
+  border:1px solid #d7e1f4;
+  border-radius:8px;
+  color:#3f5f98;
+  background:#f6f9ff;
+  font-size:10px;
+  font-weight:850;
+}
+.review-next-button:hover {
+  border-color:#b9c9e8;
+  background:#eef4ff;
+}
+
+.diff-rail-stack {
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  align-items:center;
+  justify-content:center;
+}
+.review-toggle {
+  display:grid;
+  width:22px;
+  height:22px;
+  place-items:center;
+  padding:0;
+  border:1px solid #d6deea;
+  border-radius:999px;
+  color:#8996aa;
+  background:#fff;
+  font-size:10px;
+  font-weight:900;
+}
+.review-toggle:hover {
+  border-color:#aebed8;
+  color:#466493;
+}
+.review-toggle.is-reviewed {
+  border-color:#a8dbc8;
+  color:#1d7257;
+  background:#eaf8f1;
+}
+.diff-row.is-reviewed .diff-cell {
+  opacity:.72;
+}
+.diff-row.is-active .diff-cell {
+  opacity:1;
+}
+.diff-map-marker.is-reviewed {
+  opacity:.36;
+}
+.diff-map-marker.html {
+  color:#604a9e;
+  background:#f2efff;
+}
+
+/* Long unchanged stretches collapse to a single quiet seam. */
+.unchanged-fold {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 42px minmax(0,1fr);
+  border-bottom:1px solid #eef1f5;
+  background:#fafbfd;
+}
+.unchanged-fold button {
+  grid-column:1 / -1;
+  justify-self:center;
+  min-height:30px;
+  padding:4px 12px;
+  border:0;
+  color:#7a879b;
+  background:transparent;
+  font-size:9px;
+  font-weight:800;
+}
+.unchanged-fold button span {
+  margin-left:6px;
+  color:#4f6fa5;
+}
+.unchanged-fold button:hover {
+  color:#4f6280;
+}
+
+/* Export warns without blocking. */
+.copy-review-warning {
+  margin:0 6px 5px;
+  padding:7px 8px;
+  border:1px solid #eadcae;
+  border-radius:7px;
+  color:#795d17;
+  background:#fff9e8;
+  font-size:9px;
+  line-height:1.5;
+}
+
+/* Final read removes diff grammar and lets the prose breathe. */
+.final-preview-dialog {
+  width:min(820px,calc(100vw - 30px));
+}
+.final-preview-card {
+  max-height:min(88dvh,900px);
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+}
+.final-preview-status {
+  padding:8px 10px;
+  border:1px solid #dbe4f1;
+  border-radius:8px;
+  color:#596b88;
+  background:#f8faff;
+  font-size:10px;
+  line-height:1.5;
+}
+.final-preview-text {
+  min-height:0;
+  overflow:auto;
+  padding:clamp(18px,4vw,42px);
+  border:1px solid #e2e7ef;
+  border-radius:10px;
+  color:#273750;
+  background:#fff;
+  font-size:15px;
+  line-height:2;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+/* Focus review: only the current change survives. */
+body.review-focus .control-sidebar,
+body.review-focus .diff-map,
+body.review-focus .diff-grid-head,
+body.review-focus .diff-summary,
+body.review-focus .display-state-summary,
+body.review-focus #chatgptReviewButton {
+  display:none !important;
+}
+body.review-focus .workspace-layout,
+body.review-focus .comparison-body {
+  grid-template-columns:minmax(0,1fr);
+}
+body.review-focus .diff-row:not(.is-active),
+body.review-focus .unchanged-fold {
+  display:none;
+}
+body.review-focus .compare-view {
+  max-width:1120px;
+  margin:0 auto;
+}
+body.review-focus .diff-grid-scroll {
+  min-height:55dvh;
+  max-height:none;
+  display:grid;
+  align-content:center;
+}
+body.review-focus .diff-row.is-active {
+  border:1px solid #d8e1ef;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 16px 44px rgba(20,35,60,.10);
+}
+
+/* Mobile review becomes a vertical before → after card. */
+@media (max-width:767px) {
+  .workflow-start {
+    grid-template-columns:1fr;
+    gap:14px;
+    padding:16px;
+  }
+  .workflow-start-copy strong {
+    font-size:16px;
+  }
+  .workflow-start-actions {
+    justify-content:flex-start;
+  }
+  .start-paste {
+    flex:1 1 150px;
+  }
+  .working-tools {
+    padding:6px 8px;
+  }
+  .working-tools .quick-polish-section .tool-grid {
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    padding-bottom:2px;
+    scrollbar-width:thin;
+  }
+  .working-tools .quick-polish-section .tool-grid button {
+    flex:0 0 auto;
+  }
+  .review-progress {
+    order:4;
+  }
+  #reviewFocusButton,
+  #finalPreviewButton {
+    order:5;
+  }
+
+  body[data-workspace-mode="compare"] .comparison-body {
+    display:block;
+  }
+  body[data-workspace-mode="compare"] .diff-map,
+  body[data-workspace-mode="compare"] .diff-grid-head {
+    display:none;
+  }
+  body[data-workspace-mode="compare"] #diffRows {
+    display:grid;
+    gap:9px;
+    padding:8px;
+  }
+  body[data-workspace-mode="compare"] .diff-row {
+    display:grid;
+    grid-template-columns:1fr;
+    overflow:hidden;
+    border:1px solid #e0e6ef;
+    border-radius:10px;
+    background:#fff;
+  }
+  body[data-workspace-mode="compare"] .diff-cell {
+    padding:10px 12px;
+    font-size:13px;
+    line-height:1.75;
+  }
+  body[data-workspace-mode="compare"] .diff-cell.before::before,
+  body[data-workspace-mode="compare"] .diff-cell.after::before {
+    display:block;
+    margin-bottom:5px;
+    color:#8a96aa;
+    font-size:8px;
+    font-weight:900;
+    letter-spacing:.08em;
+  }
+  body[data-workspace-mode="compare"] .diff-cell.before::before {
+    content:"変更前";
+  }
+  body[data-workspace-mode="compare"] .diff-cell.after::before {
+    content:"修正後";
+  }
+  body[data-workspace-mode="compare"] .diff-rail-cell {
+    min-height:35px;
+    border:0;
+    border-top:1px dashed #e2e7ef;
+    border-bottom:1px dashed #e2e7ef;
+  }
+  body[data-workspace-mode="compare"] .diff-rail-stack {
+    flex-direction:row;
+  }
+  body[data-workspace-mode="compare"] .html-diff-detail {
+    grid-column:1;
+  }
+  body[data-workspace-mode="compare"] .unchanged-fold {
+    display:block;
+    border:0;
+    border-radius:8px;
+  }
+  body.review-focus #diffRows {
+    padding:12px 4px;
+  }
+  .final-preview-card {
+    max-height:92dvh;
+  }
+  .final-preview-text {
+    padding:18px 14px;
+    font-size:14px;
+    line-height:1.9;
+  }
+}
