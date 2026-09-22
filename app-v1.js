@@ -1076,15 +1076,19 @@
       state.before = event.target.value;
       scheduleComparison();
       renderStats();
+      renderUndo();
       updateStatus();
+      if (!$('#helpPanel').hidden) renderHelp();
     });
     $('#workingText').addEventListener('input', (event) => {
       beginTyping();
       state.after = event.target.value;
       scheduleComparison();
       renderStats();
+      renderUndo();
       updateStatus();
       computeSearch();
+      if (!$('#helpPanel').hidden) renderHelp();
     });
     $('#searchInput').addEventListener('input', (event) => {
       state.search.query = event.target.value;
