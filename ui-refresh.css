@@ -880,6 +880,12 @@ body[data-workspace-state="empty"] .editor-tools-row {
   flex:0 0 auto;
   gap:4px;
 }
+.app-bar .more-menu button {
+  color:var(--ink);
+}
+.app-bar .more-menu .danger-menu-item {
+  color:var(--red);
+}
 .app-bar .icon-button,
 .app-bar .primary-button,
 .app-bar .quiet-button,
