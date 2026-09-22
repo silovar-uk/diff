@@ -150,6 +150,7 @@
               <span class="insert"><strong id="diffInsert">0</strong><small>追加</small></span>
               <span class="delete"><strong id="diffDelete">0</strong><small>削除</small></span>
             </div>
+            <div id="displayStateSummary" class="display-state-summary compare-only" aria-label="現在の比較・表示設定"></div>
             <nav class="diff-nav compare-only" aria-label="差分の移動">
               <button id="diffPrev" class="tool-button" type="button" data-action="diff-prev" title="前の差分（K）" aria-label="前の差分">←</button>
               <span id="diffNavStatus" class="diff-nav-status" aria-live="polite">0 / 0</span>
@@ -224,13 +225,19 @@
         <button class="dialog-close" type="button" data-action="close-display" aria-label="閉じる">×</button>
       </header>
       <div class="display-options">
-        <label id="compareOptions" class="display-option" hidden>
-          <input id="ignoreHtmlTagsToggle" type="checkbox" checked />
-          <span><strong>HTMLタグを差分から除外</strong><small>タグの違いを除いて本文を比較します。</small></span>
-        </label>
-        <label class="display-option"><input id="displayShowTags" type="checkbox" /><span><strong>HTMLタグを表示</strong><small>本文の対応付けは変えず、該当行のタグをチップで表示します。</small></span></label>
-        <label class="display-option"><input id="displayWhitespace" type="checkbox" /><span><strong>空白・改行を見える化</strong><small>半角空白を「·」、全角空白を「□」、改行を「↵」で表示します。</small></span></label>
-        <label class="display-option"><input id="displayUrls" type="checkbox" /><span><strong>URLを強調</strong><small>URLを青色と下線で見つけやすくします。</small></span></label>
+        <section id="compareOptions" class="display-options-section" hidden>
+          <p class="display-options-title">比較対象</p>
+          <label class="display-option">
+            <input id="ignoreHtmlTagsToggle" type="checkbox" checked />
+            <span><strong>本文のみで比較</strong><small>ONではHTMLタグの違いを除外。OFFではタグ・属性の変更も差分として扱います。</small></span>
+          </label>
+        </section>
+        <section class="display-options-section">
+          <p class="display-options-title">表示補助</p>
+          <label class="display-option"><input id="displayShowTags" type="checkbox" /><span><strong>HTMLタグを見る</strong><small>本文には混ぜず、該当行のタグをチップで表示します。</small></span></label>
+          <label class="display-option"><input id="displayWhitespace" type="checkbox" /><span><strong>空白・改行を見える化</strong><small>半角空白を「·」、全角空白を「□」、改行を「↵」で表示します。</small></span></label>
+          <label class="display-option"><input id="displayUrls" type="checkbox" /><span><strong>URLを強調</strong><small>URLを青色と下線で見つけやすくします。</small></span></label>
+        </section>
       </div>
       <footer class="dialog-actions">
         <button class="secondary-button" type="button" data-action="close-display">キャンセル</button>
