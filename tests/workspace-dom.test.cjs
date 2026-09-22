@@ -57,8 +57,9 @@ async function workspace(mobile = false, saved = null) {
     assert.ok($('#reviewProgress').textContent.includes('/'), 'review progress is visible');
     const firstReview = $('[data-review-index]');
     assert.ok(firstReview, 'each changed row exposes a review control');
+    const firstReviewIndex = firstReview.dataset.reviewIndex;
     firstReview.click();
-    assert.equal(firstReview.getAttribute('aria-pressed'), 'true');
+    assert.equal($(`[data-review-index="${firstReviewIndex}"]`).getAttribute('aria-pressed'), 'true');
     assert.ok($('#reviewProgress').textContent.includes('1'), 'review progress updates after confirming a change');
     assert.ok($('#diffMap .is-reviewed'), 'reviewed state reaches the document map');
     const firstStatus = $('#diffNavStatus').textContent;
