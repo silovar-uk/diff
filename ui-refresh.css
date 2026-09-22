@@ -1372,3 +1372,217 @@ body[data-workspace-state="empty"] .editor-view {
     font-size:8px;
   }
 }
+
+
+/* Diff comparison identity + help UX — 2026-09-22 */
+.brand-compact .brand-text {
+  display:flex;
+  align-items:center;
+  margin:0;
+}
+.brand-label {
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.02em;
+  white-space:nowrap;
+}
+
+.help-wrap {
+  position:relative;
+}
+.help-button {
+  font-weight:900;
+}
+.help-panel {
+  position:absolute;
+  z-index:2200;
+  top:calc(100% + 8px);
+  right:0;
+  width:320px;
+  max-width:calc(100vw - 16px);
+  padding:12px;
+  color:var(--ink);
+  border:1px solid #dce3ee;
+  border-radius:11px;
+  background:#fff;
+  box-shadow:0 18px 50px rgba(10,24,48,.24);
+}
+.help-current {
+  padding:2px 2px 11px;
+  border-bottom:1px solid var(--line);
+}
+.help-current small {
+  display:block;
+  margin-bottom:5px;
+  color:#7b899f;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.help-current strong {
+  display:block;
+  color:#30445f;
+  font-size:12px;
+}
+.help-current p {
+  margin:5px 0 0;
+  color:#667690;
+  font-size:10px;
+  line-height:1.6;
+}
+.help-section {
+  padding:10px 2px 0;
+}
+.help-section > strong {
+  display:block;
+  margin-bottom:6px;
+  color:#3a4e69;
+  font-size:10px;
+}
+.help-section ol {
+  margin:0;
+  padding-left:20px;
+  color:#5f6e85;
+  font-size:10px;
+  line-height:1.8;
+}
+.help-shortcuts dl {
+  display:grid;
+  gap:5px;
+  margin:0;
+}
+.help-shortcuts dl > div {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+}
+.help-shortcuts dt,
+.help-shortcuts dd {
+  margin:0;
+  font-size:9px;
+}
+.help-shortcuts dt {
+  color:#4d607d;
+}
+.help-shortcuts dd {
+  color:#7b899f;
+}
+.help-shortcuts kbd {
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:1px 5px;
+  border:1px solid #d9e0eb;
+  border-bottom-width:2px;
+  border-radius:5px;
+  color:#415571;
+  background:#f8fafc;
+  font:800 8px/1 "Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;
+}
+
+.clear-all-button {
+  min-height:28px;
+  height:28px;
+  padding:4px 8px;
+  border:1px solid transparent;
+  border-radius:7px;
+  color:#b2767f;
+  background:transparent;
+  font-size:9px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.clear-all-button:hover:not(:disabled),
+.clear-all-button:focus-visible {
+  color:var(--red);
+  border-color:#edc9cf;
+  background:var(--red-soft);
+}
+.clear-all-button:disabled {
+  opacity:.35;
+}
+.clear-all-short {
+  display:none;
+}
+
+.workflow-start {
+  display:flex;
+  min-height:42px !important;
+  margin:0 auto 8px;
+  padding:7px 11px !important;
+  gap:8px;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+}
+.workflow-start > strong {
+  color:#435774;
+  font-size:10px;
+}
+.workflow-start > span {
+  color:#8a96aa;
+  font-size:9px;
+}
+
+.pane-action.danger {
+  width:auto;
+  min-width:0;
+  padding:3px 7px;
+  color:#8d7880 !important;
+  font-size:9px;
+}
+.pane-action.danger:hover:not(:disabled),
+.pane-action.danger:focus-visible {
+  color:var(--red) !important;
+  border-color:#efccd2;
+  background:var(--red-soft);
+}
+
+@media (max-width:767px) {
+  .brand-compact img {
+    display:none;
+  }
+  .brand-compact .brand-text {
+    display:flex;
+  }
+  .brand-label {
+    font-size:10px;
+  }
+  .app-bar {
+    grid-template-columns:auto auto minmax(0,1fr) auto;
+  }
+  .app-bar .top-actions {
+    gap:2px;
+  }
+  .help-panel {
+    position:fixed;
+    top:54px;
+    right:8px;
+    left:8px;
+    width:auto;
+    max-width:none;
+  }
+  .workflow-start {
+    flex-direction:column;
+    gap:2px;
+    text-align:center;
+  }
+}
+
+@media (max-width:420px) {
+  .clear-all-long {
+    display:none;
+  }
+  .clear-all-short {
+    display:inline;
+  }
+  .clear-all-button {
+    padding-inline:5px;
+    font-size:8px;
+  }
+  .brand-label {
+    font-size:9px;
+  }
+}
