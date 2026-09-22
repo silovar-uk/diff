@@ -48,7 +48,7 @@ const replaceCss = read('replace-tools-v1.css');
 assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
 assert.ok(html.includes('href="ui-refresh.css"'), 'UI refresh styles must be loaded');
 assert.ok(html.includes('class="workflow-strip workflow-start"'), 'task-first empty-state guidance must be visible');
-assert.ok(html.includes('class="tool-section"'), 'editing tools must be grouped into collapsible sections');
+assert.ok(html.includes('class="pane-popover'), 'editing tools must be grouped into floating pane popovers');
 assert.equal((html.match(/id="chatgptReviewButton"/g) || []).length, 1, 'ChatGPT review button must be unique');
 assert.ok(html.indexOf('src="diff-engine-v1.js"') < html.indexOf('src="chatgpt-review-v1.js"'), 'ChatGPT module must load after the diff engine');
 assert.ok(html.indexOf('src="app-v1.js"') < html.indexOf('src="chatgpt-review-v1.js"'), 'ChatGPT module must load after the app controller');
