@@ -102,27 +102,9 @@
           </section>
 
           <section id="editorView" class="editor-view" aria-label="原稿編集">
-            <article class="editor-pane is-reference">
-              <header class="pane-head">
-                <div class="pane-title"><strong>変更前</strong></div>
-                <div class="pane-actions">
-                  <button class="quiet-button" type="button" data-action="paste-before">貼り付け</button>
-                  <button class="quiet-button danger" type="button" data-action="clear-before">消去</button>
-                </div>
-              </header>
-              <textarea id="baselineText" aria-label="変更前" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
-              <footer class="pane-foot"><span id="baselineStats">0文字・0行</span><span>比較元</span></footer>
-            </article>
-
-            <article class="editor-pane is-working">
-              <header class="pane-head">
-                <div class="pane-title"><strong>修正後</strong></div>
-                <div class="pane-actions">
-                  <button class="quiet-button" type="button" data-action="paste-after">貼り付け</button>
-                  <button class="quiet-button danger" type="button" data-action="clear-after">消去</button>
-                </div>
-              </header>
-              <div class="working-body">
+            <div class="editor-tools-row edit-only" aria-label="修正後の編集ツール">
+              <div class="editor-tools-spacer" aria-hidden="true"></div>
+              <div class="editor-tools-slot">
                 <div class="working-tools edit-only" aria-label="修正後の原稿を整えるツール">
                 <section class="tool-section quick-polish-section" aria-labelledby="quickPolishTitle">
                 <header class="tool-section-static-head"><strong id="quickPolishTitle">よく使う整形</strong></header>
@@ -201,13 +183,38 @@
                 </details>
                 </div>
                 <div id="selectionToolbar" class="selection-toolbar" role="group" aria-label="選択した文字のCMSタグ" hidden>
-                  <button type="button" data-tag="t1" title="見出し1" aria-label="見出し1">H1</button>
-                  <button type="button" data-tag="t2" title="見出し2" aria-label="見出し2">H2</button>
-                  <button type="button" data-tag="t3" title="見出し3" aria-label="見出し3">H3</button>
-                  <button type="button" data-tag="t3red" title="見出し3・赤">赤</button>
-                  <button type="button" data-tag="label">ラベル</button>
-                  <button type="button" data-tag="strong">強調</button>
+                <button type="button" data-tag="t1" title="見出し1" aria-label="見出し1">H1</button>
+                <button type="button" data-tag="t2" title="見出し2" aria-label="見出し2">H2</button>
+                <button type="button" data-tag="t3" title="見出し3" aria-label="見出し3">H3</button>
+                <button type="button" data-tag="t3red" title="見出し3・赤">赤</button>
+                <button type="button" data-tag="label">ラベル</button>
+                <button type="button" data-tag="strong">強調</button>
                 </div>
+              </div>
+            </div>
+
+            <article class="editor-pane is-reference">
+              <header class="pane-head">
+                <div class="pane-title"><strong>変更前</strong></div>
+                <div class="pane-actions">
+                  <button class="quiet-button" type="button" data-action="paste-before">貼り付け</button>
+                  <button class="quiet-button danger" type="button" data-action="clear-before">消去</button>
+                </div>
+              </header>
+              <textarea id="baselineText" aria-label="変更前" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
+              <footer class="pane-foot"><span id="baselineStats">0文字・0行</span><span>比較元</span></footer>
+            </article>
+
+            <article class="editor-pane is-working">
+              <header class="pane-head">
+                <div class="pane-title"><strong>修正後</strong></div>
+                <div class="pane-actions">
+                  <button class="quiet-button" type="button" data-action="paste-after">貼り付け</button>
+                  <button class="quiet-button danger" type="button" data-action="clear-after">消去</button>
+                </div>
+              </header>
+              <div class="working-body">
+
               <textarea id="workingText" aria-label="修正後" class="editor" spellcheck="false" placeholder="修正後の原稿を貼り付け、またはここで編集"></textarea>
               </div>
               <footer class="pane-foot"><span id="workingStats">0文字・0行</span><span>修正・出力対象</span></footer>
