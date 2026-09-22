@@ -705,8 +705,18 @@
   function setMode(mode) {
     state.mode = mode === 'compare' ? 'compare' : 'edit';
     if (state.mode === 'compare') calculateComparison();
+    else state.reviewFocus = false;
     renderAll();
     persist();
+  }
+
+  function toggleReviewFocus() {
+    if (state.mode !== 'compare') return;
+    state.reviewFocus = !state.reviewFocus;
+    renderAll();
+    if (state.reviewFocus && state.activeRowIndex >= 0) {
+      requestAnimationFrame(() => $('[data-diff-row="' + state.activeRowIndex + '"]')?.scrollIntoView({ block: 'center' }));
+    }
   }
 
   function loadSample() {
@@ -846,6 +856,27 @@
     notify('比較・表示設定を反映しました');
   }
 
+  function openFinalPreview() {
+    if (!state.after) {
+      notify('修正後の原稿を入力してください');
+      return;
+    }
+    const total = changedIndexes().length;
+    const reviewed = reviewedCount();
+    const remaining = Math.max(0, total - reviewed);
+    $('#finalPreviewStatus').textContent = !total
+      ? '変更はありません。最終稿を通して確認できます。'
+      : remaining
+        ? `未確認の変更が${remaining}件あります。差分色を外した最終稿として読めます。`
+        : `✓ ${reviewed}件の変更をすべて確認済みです。`;
+    $('#finalPreviewText').textContent = decodeEntities(stripTags(state.after));
+    $('#finalPreviewDialog').showModal();
+  }
+
+  function closeFinalPreview() {
+    if ($('#finalPreviewDialog').open) $('#finalPreviewDialog').close();
+  }
+
   function stripTags(value) {
     return String(value || '').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, '');
   }
@@ -906,7 +937,10 @@
 
   function bind() {
     const mobile = window.matchMedia('(max-width: 767px)');
-    const syncOtherTools = () => { $('#otherEditTools').open = !mobile.matches; };
+    $('#otherEditTools').open = false;
+    const syncOtherTools = () => {
+      if (mobile.matches) $('#otherEditTools').open = false;
+    };
     syncOtherTools();
     mobile.addEventListener('change', syncOtherTools);
     document.addEventListener('selectionchange', updateSelectionToolbar);
@@ -948,6 +982,17 @@
     });
 
     document.addEventListener('click', (event) => {
+      const reviewButton = event.target.closest('[data-review-index]');
+      if (reviewButton) {
+        toggleReviewed(Number(reviewButton.dataset.reviewIndex));
+        return;
+      }
+      const expandSame = event.target.closest('[data-expand-same]');
+      if (expandSame) {
+        state.expandedSameRuns.add(expandSame.dataset.expandSame);
+        renderComparison();
+        return;
+      }
       const htmlButton = event.target.closest('[data-html-diff-index]');
       if (htmlButton) {
         const index = Number(htmlButton.dataset.htmlDiffIndex);
@@ -983,6 +1028,10 @@
         'search-clear': () => { state.search.query = ''; $('#searchInput').value = ''; computeSearch(); },
         'diff-prev': () => moveDiff(-1),
         'diff-next': () => moveDiff(1),
+        'review-next-unreviewed': moveNextUnreviewed,
+        'toggle-review-focus': toggleReviewFocus,
+        'open-final-preview': openFinalPreview,
+        'close-final-preview': closeFinalPreview,
         'open-display': openDisplayDialog,
         'close-display': () => $('#displayDialog').close(),
         'apply-display': applyDisplay,
@@ -1003,12 +1052,16 @@
     $('#displayDialog').addEventListener('click', (event) => {
       if (event.target === $('#displayDialog')) $('#displayDialog').close();
     });
+    $('#finalPreviewDialog').addEventListener('click', (event) => {
+      if (event.target === $('#finalPreviewDialog')) closeFinalPreview();
+    });
     document.addEventListener('keydown', (event) => {
       const editing = event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement || event.target.isContentEditable;
       if (event.key === 'Escape') {
         closeCopyMenu();
         if (!$('#moreMenu').hidden) closeMoreMenu(true);
         if ($('#displayDialog').open) $('#displayDialog').close();
+        if ($('#finalPreviewDialog').open) closeFinalPreview();
       }
       if (!editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
@@ -1017,6 +1070,7 @@
       if (!editing && !event.isComposing && !document.querySelector('dialog[open]') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && state.mode === 'compare') {
         if (event.key.toLowerCase() === 'j') { event.preventDefault(); moveDiff(1); }
         if (event.key.toLowerCase() === 'k') { event.preventDefault(); moveDiff(-1); }
+        if (event.key.toLowerCase() === 'v' && state.activeRowIndex >= 0) { event.preventDefault(); toggleReviewed(state.activeRowIndex); }
       }
       if (!editing && state.mode === 'compare' && event.altKey && event.key === 'ArrowLeft') { event.preventDefault(); moveDiff(-1); }
       if (!editing && state.mode === 'compare' && event.altKey && event.key === 'ArrowRight') { event.preventDefault(); moveDiff(1); }
