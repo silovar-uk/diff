@@ -745,3 +745,57 @@ body.review-focus .diff-row.is-active {
     line-height:1.9;
   }
 }
+
+
+/* Editor top alignment — 2026-09-22 */
+/*
+ * Keep the editing controls visually assigned to the working copy without
+ * letting them push only the right textarea downward. The tools occupy a
+ * shared grid row above both panes; only its right half contains controls.
+ */
+.editor-tools-row {
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  min-width:0;
+  border-bottom:1px solid var(--line);
+  background:#fff;
+}
+.editor-tools-spacer {
+  min-width:0;
+  border-right:1px solid var(--line);
+  background:#fff;
+}
+.editor-tools-slot {
+  min-width:0;
+  background:#f8faff;
+}
+.editor-tools-slot .working-tools {
+  border-bottom:0;
+}
+.editor-tools-slot .selection-toolbar {
+  border-top:1px solid var(--line);
+  border-bottom:0;
+}
+body[data-workspace-state="empty"] .editor-tools-row {
+  display:none;
+}
+
+/* Both panes now begin on the same grid row, so their headers and text start align. */
+.editor-tools-row + .editor-pane,
+.editor-tools-row + .editor-pane + .editor-pane {
+  align-self:stretch;
+}
+
+@media (max-width:767px) {
+  .editor-tools-row {
+    grid-template-columns:1fr;
+  }
+  .editor-tools-spacer {
+    display:none;
+  }
+  .editor-tools-slot {
+    grid-column:1;
+    border-bottom:1px solid var(--line);
+  }
+}
