@@ -1,12 +1,16 @@
 {
-  "name": "Text Review Studio v1",
-  "short_name": "Text Review",
-  "description": "CMS原稿に対応した左右差分確認ツール",
+  "name": "差分比較",
+  "short_name": "差分比較",
+  "description": "変更前と修正後の原稿を左右で比較し、差分を確認するツール",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f3f5f9",
   "theme_color": "#101d34",
   "icons": [
-    { "src": "assets/app-icon.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "assets/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
