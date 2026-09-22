@@ -1351,9 +1351,6 @@ body[data-workspace-state="empty"] .editor-view {
 }
 
 @media (max-width:420px) {
-  .app-bar .top-actions .more-menu-wrap {
-    display:none;
-  }
   .pane-polish > summary {
     font-size:0;
   }
