@@ -31,7 +31,8 @@ const replaceCss = read('replace-tools-v1.css');
   'displayWhitespace', 'displayUrls', 'searchInput', 'replaceInput',
   'replaceHistory', 'replaceHistoryCount', 'chatgptReviewButton', 'toast',
   'reviewProgress', 'reviewSidebarProgress', 'reviewFocusButton',
-  'finalPreviewButton', 'finalPreviewDialog', 'finalPreviewText'
+  'finalPreviewButton', 'finalPreviewDialog', 'finalPreviewText',
+  'helpButton', 'helpPanel', 'helpCurrentTitle', 'helpCurrentText', 'clearAllButton'
 ].forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing v1 UI anchor: ${id}`));
 
 ['projectTitle', 'profileSelect', 'reviewRail', 'reviewPanel', 'workspaceDisplayDialog']
@@ -48,6 +49,12 @@ const replaceCss = read('replace-tools-v1.css');
 assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
 assert.ok(html.includes('href="ui-refresh.css"'), 'UI refresh styles must be loaded');
 assert.ok(html.includes('class="workflow-strip workflow-start"'), 'task-first empty-state guidance must be visible');
+assert.ok(html.includes('<strong class="brand-label">差分比較</strong>'), 'app identity must be 差分比較');
+assert.ok(!html.includes('>TRS<'), 'TRS label must not remain');
+assert.ok(html.includes('<title>差分比較</title>'), 'document title must use 差分比較');
+assert.ok(!html.includes('data-action="paste-before"'), 'paste-before buttons must be removed');
+assert.ok(!html.includes('data-action="paste-after"'), 'paste-after buttons must be removed');
+assert.equal((html.match(/>消去<\/button>/g) || []).length, 2, 'both pane clear actions must use the 消去 label');
 assert.ok(html.includes('class="pane-popover'), 'editing tools must be grouped into floating pane popovers');
 assert.equal((html.match(/id="chatgptReviewButton"/g) || []).length, 1, 'ChatGPT review button must be unique');
 assert.ok(html.indexOf('src="diff-engine-v1.js"') < html.indexOf('src="chatgpt-review-v1.js"'), 'ChatGPT module must load after the diff engine');
@@ -156,7 +163,18 @@ assert.ok(app.includes('function renderCollapsedRows()'), 'unchanged runs must b
 assert.ok(app.includes('function openFinalPreview()'), 'final text reading mode is required');
 assert.ok(app.includes('function toggleReviewFocus()'), 'focus review mode is required');
 assert.ok(html.includes('id="moreMenu"'));
-assert.match(html, /id="moreMenu"[^>]*hidden>[\s\S]*?data-clear-all/);
+assert.ok(html.includes('id="clearAllButton"'), 'clear-all must be permanently visible in the top bar');
+assert.ok(html.indexOf('id="clearAllButton"') < html.indexOf('id="copyButton"'), 'clear-all must sit before output in the top actions');
+assert.doesNotMatch(html, /id="moreMenu"[^>]*hidden>[\s\S]*?data-clear-all/, 'clear-all must not be hidden in the overflow menu');
+assert.ok(html.includes('id="helpButton"'), 'help button is required');
+assert.ok(html.includes('id="helpPanel"'), 'contextual help panel is required');
+assert.ok(app.includes('function getHelpContext()'), 'help must react to current workspace state');
+assert.ok(app.includes('function toggleHelp()'), 'help panel requires explicit open/close logic');
+assert.ok(app.includes('function clearAllDocuments()'), 'full clear must be owned by the app history transaction');
+assert.ok(clearAll.includes('window.TextReviewApp?.clearAllDocuments?.()'), 'clear-all module must delegate to the app transaction');
+assert.ok(app.includes("event.target === $('#baselineText')"), 'before editor must use app-level undo');
+assert.ok(app.includes("event.target === $('#workingText')"), 'after editor must use app-level undo');
+assert.ok(app.includes("event.key.toLowerCase() === 'z'"), 'Ctrl/Cmd+Z handling is required');
 assert.ok(!html.includes('原稿へ戻る'));
 ['BEFORE / REFERENCE', 'AFTER / WORKING', 'QUICK POLISH', 'SESSION HISTORY', 'EDITING TOOLS'].forEach(label => assert.ok(!html.includes(label)));
 assert.match(html, /class="topbar app-bar"[\s\S]*?id="editModeButton"[\s\S]*?id="reviewProgress"[\s\S]*?id="diffPrev"[\s\S]*?id="copyButton"/);
