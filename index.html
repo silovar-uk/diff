@@ -15,15 +15,66 @@
 </head>
 <body data-workspace-mode="edit" data-workspace-state="empty">
   <div class="app-shell">
-    <header class="topbar">
-      <a class="brand" href="#" aria-label="Text Review Studio">
+    <header class="topbar app-bar">
+      <a class="brand brand-compact" href="#" aria-label="Text Review Studio">
         <img src="assets/app-icon.png" alt="" />
-        <span class="brand-text"><strong>Text Review Studio</strong><small>原稿の修正・差分確認をひとつの画面で</small></span>
+        <span class="brand-text"><strong>TRS</strong><small>Text Review Studio</small></span>
       </a>
-      <div id="analysisState" class="top-status" aria-live="polite">変更前と修正後を入力してください</div>
+
+      <div class="mode-switch" role="group" aria-label="表示モード">
+        <button id="editModeButton" class="is-active" type="button" data-action="mode-edit">原稿</button>
+        <button id="compareModeButton" type="button" data-action="mode-compare">レビュー</button>
+      </div>
+
+      <div class="app-bar-state">
+        <span id="analysisState" class="top-status" aria-live="polite">変更前と修正後を入力してください</span>
+        <span id="toolbarSummary" class="toolbar-summary" aria-hidden="true"></span>
+      </div>
+
+      <div class="review-command compare-only">
+        <details class="review-menu">
+          <summary aria-label="レビュー進捗を表示"><div id="reviewProgress" class="review-progress" aria-live="polite"></div></summary>
+          <div class="review-popover">
+            <div id="diffSummary" class="diff-summary" hidden aria-label="差分の内訳">
+              <span><strong id="diffTotal">0</strong><small>差分</small></span>
+              <span class="replace"><strong id="diffReplace">0</strong><small>置換</small></span>
+              <span class="insert"><strong id="diffInsert">0</strong><small>追加</small></span>
+              <span class="delete"><strong id="diffDelete">0</strong><small>削除</small></span>
+            </div>
+            <aside class="control-sidebar" aria-label="レビュー概要">
+              <section id="reviewSidebar" class="review-sidebar" aria-labelledby="reviewTitle">
+                <div class="review-sidebar-head">
+                  <div><small>REVIEW PROGRESS</small><h2 id="reviewTitle">変更を確認</h2></div>
+                  <strong id="reviewSidebarProgress">0 / 0</strong>
+                </div>
+                <p id="reviewOverview" aria-live="polite"></p>
+                <div id="reviewDistribution" class="review-distribution"></div>
+                <button class="review-next-button" type="button" data-action="review-next-unreviewed">次の未確認へ</button>
+              </section>
+            </aside>
+            <div id="displayStateSummary" class="display-state-summary" aria-label="現在の比較・表示設定"></div>
+          </div>
+        </details>
+        <nav class="diff-nav" aria-label="差分の移動">
+          <button id="diffPrev" class="tool-button" type="button" data-action="diff-prev" title="前の差分（K）" aria-label="前の差分">←</button>
+          <span id="diffNavStatus" class="diff-nav-status" aria-live="polite">0 / 0</span>
+          <button id="diffNext" class="tool-button" type="button" data-action="diff-next" title="次の差分（J）" aria-label="次の差分">→</button>
+        </nav>
+        <button id="reviewFocusButton" class="quiet-button" type="button" data-action="toggle-review-focus" aria-pressed="false">集中</button>
+        <button id="finalPreviewButton" class="primary-button" type="button" data-action="open-final-preview" hidden disabled>最終稿を読む</button>
+      </div>
+
       <div class="top-actions">
         <button id="undoButton" class="icon-button" type="button" data-action="undo" title="元に戻す" aria-label="元に戻す" disabled>↶</button>
         <button id="redoButton" class="icon-button" type="button" data-action="redo" title="やり直す" aria-label="やり直す" disabled>↷</button>
+        <div class="more-menu-wrap">
+          <button id="moreMenuButton" class="icon-button" type="button" aria-label="その他" title="その他" aria-expanded="false" aria-controls="moreMenu">⋯</button>
+          <div id="moreMenu" class="more-menu" hidden>
+            <button type="button" data-action="open-display">表示設定</button>
+            <button id="chatgptReviewButton" type="button" title="元原稿・変更版・差分一覧をChatGPTに渡して変更意図を分析" hidden disabled>GPTで意図分析</button>
+            <button type="button" data-clear-all class="danger-menu-item">原稿をすべて削除</button>
+          </div>
+        </div>
         <div class="copy-wrap">
           <button id="copyButton" class="primary-button" type="button" data-action="toggle-copy-menu" aria-expanded="false" disabled>出力 ▾</button>
           <div id="copyMenu" class="copy-menu" hidden>
@@ -51,173 +102,133 @@
             </div>
           </section>
       <div class="workspace-layout">
-        <aside class="control-sidebar" aria-label="修正後の原稿を整えるツール">
-
-
-          <section id="reviewSidebar" class="review-sidebar compare-only" aria-labelledby="reviewTitle">
-            <div class="review-sidebar-head">
-              <div><small>REVIEW PROGRESS</small><h2 id="reviewTitle">変更を確認</h2></div>
-              <strong id="reviewSidebarProgress">0 / 0</strong>
-            </div>
-            <p id="reviewOverview" aria-live="polite"></p>
-            <div id="reviewDistribution" class="review-distribution"></div>
-            <button class="review-next-button" type="button" data-action="review-next-unreviewed">次の未確認へ</button>
-            <p class="side-note">J/Kで差分移動。確認済みにすると進捗へ反映します。</p>
-          </section>
-        </aside>
-
         <section class="main-stage">
 
-
-          <section class="desk-toolbar" aria-label="表示モードと設定">
-            <div class="mode-switch" role="group" aria-label="表示モード">
-              <button id="editModeButton" class="is-active" type="button" data-action="mode-edit">原稿</button>
-              <button id="compareModeButton" type="button" data-action="mode-compare">レビュー</button>
-            </div>
-            <span id="toolbarSummary" class="toolbar-summary edit-only">まず左右に原稿を貼ります</span>
-            <div id="diffSummary" class="diff-summary" hidden aria-label="差分の内訳">
-              <span><strong id="diffTotal">0</strong><small>差分</small></span>
-              <span class="replace"><strong id="diffReplace">0</strong><small>置換</small></span>
-              <span class="insert"><strong id="diffInsert">0</strong><small>追加</small></span>
-              <span class="delete"><strong id="diffDelete">0</strong><small>削除</small></span>
-            </div>
-            <div id="reviewProgress" class="review-progress compare-only" aria-live="polite"></div>
-            <div id="displayStateSummary" class="display-state-summary compare-only" aria-label="現在の比較・表示設定"></div>
-            <nav class="diff-nav compare-only" aria-label="差分の移動">
-              <button id="diffPrev" class="tool-button" type="button" data-action="diff-prev" title="前の差分（K）" aria-label="前の差分">←</button>
-              <span id="diffNavStatus" class="diff-nav-status" aria-live="polite">0 / 0</span>
-              <button id="diffNext" class="tool-button" type="button" data-action="diff-next" title="次の差分（J）" aria-label="次の差分">→</button>
-            </nav>
-            <button id="reviewFocusButton" class="quiet-button compare-only" type="button" data-action="toggle-review-focus" aria-pressed="false">集中</button>
-            <button id="finalPreviewButton" class="quiet-button compare-only" type="button" data-action="open-final-preview" disabled>最終稿</button>
-            <button id="chatgptReviewButton" class="quiet-button" type="button" title="元原稿・変更版・差分一覧をChatGPTに渡して変更意図を分析" aria-label="ChatGPTで差分意図を分析" hidden disabled>GPTで意図分析</button>
-            <span class="toolbar-spacer"></span>
-            <button class="quiet-button" type="button" data-action="open-display">表示</button>
-            <div class="more-menu-wrap">
-              <button id="moreMenuButton" class="icon-button" type="button" aria-label="その他" title="その他" aria-expanded="false" aria-controls="moreMenu">⋯</button>
-              <div id="moreMenu" class="more-menu" hidden>
-                <button type="button" data-clear-all class="danger-menu-item">原稿をすべて削除</button>
-              </div>
-            </div>
-          </section>
-
           <section id="editorView" class="editor-view" aria-label="原稿編集">
-            <div class="editor-tools-row edit-only" aria-label="修正後の編集ツール">
-              <div class="editor-tools-spacer" aria-hidden="true"></div>
-              <div class="editor-tools-slot">
-                <div class="working-tools edit-only" aria-label="修正後の原稿を整えるツール">
-                <section class="tool-section quick-polish-section" aria-labelledby="quickPolishTitle">
-                <header class="tool-section-static-head"><strong id="quickPolishTitle">よく使う整形</strong></header>
-                <div class="tool-section-body">
-                <div class="tool-grid">
-                <button type="button" data-action="transform-space">空白を整理</button>
-                <button type="button" data-replace-action="fullwidth-to-halfwidth">全角を半角へ</button>
-                <button type="button" data-action="transform-symbol">記号を統一</button>
-                <button type="button" data-action="transform-notation">表記を統一</button>
-                <button type="button" data-action="transform-newline">空行を整理</button>
+            <article class="editor-pane is-reference">
+              <header class="pane-head">
+                <div class="pane-heading">
+                  <strong>変更前</strong>
+                  <span id="baselineStats">0文字・0行</span>
                 </div>
+                <div class="pane-actions">
+                  <button class="pane-action" type="button" data-action="paste-before">貼り付け</button>
+                  <button class="pane-action danger" type="button" data-action="clear-before" aria-label="変更前を消去">×</button>
                 </div>
-                </section>
-                <details id="otherEditTools" class="other-edit-tools">
-                <summary>その他の編集ツール</summary>
-                <details class="tool-section">
-                <summary>
-                <span><strong>検索・置換</strong></span>
-                <em>修正後のみ</em>
-                </summary>
-                <div class="tool-section-body">
-                <div class="side-search">
-                <input id="searchInput" type="search" placeholder="検索する文字列" aria-label="修正後の原稿を検索" />
-                <button class="tool-button" type="button" data-action="search-clear" aria-label="検索をクリア">×</button>
+              </header>
+              <textarea id="baselineText" aria-label="変更前" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
+            </article>
+
+            <article class="editor-pane is-working">
+              <header class="pane-head">
+                <div class="pane-heading">
+                  <strong>修正後</strong>
+                  <span id="workingStats">0文字・0行</span>
                 </div>
-                <div class="search-meta">
-                <span id="searchCount">検索語を入力</span>
-                <div class="search-actions">
-                <button id="searchPrev" type="button" data-action="search-prev" aria-label="前の検索結果">←</button>
-                <button id="searchNext" type="button" data-action="search-next" aria-label="次の検索結果">→</button>
+                <div class="pane-actions working-pane-actions">
+                  <details class="pane-popover pane-polish" data-pane-menu>
+                    <summary>整形</summary>
+                    <div class="pane-popover-panel">
+                      <section class="tool-section quick-polish-section" aria-labelledby="quickPolishTitle">
+                      <header class="tool-section-static-head"><strong id="quickPolishTitle">よく使う整形</strong></header>
+                      <div class="tool-section-body">
+                      <div class="tool-grid">
+                      <button type="button" data-action="transform-space">空白を整理</button>
+                      <button type="button" data-replace-action="fullwidth-to-halfwidth">全角を半角へ</button>
+                      <button type="button" data-action="transform-symbol">記号を統一</button>
+                      <button type="button" data-action="transform-notation">表記を統一</button>
+                      <button type="button" data-action="transform-newline">空行を整理</button>
+                      </div>
+                      </div>
+                      </section>
+                    </div>
+                  </details>
+                  <details class="pane-popover pane-search" data-pane-menu>
+                    <summary>検索</summary>
+                    <div class="pane-popover-panel">
+                      <div class="tool-section">
+                      <summary>
+                      <span><strong>検索・置換</strong></span>
+                      <em>修正後のみ</em>
+                      </summary>
+                      <div class="tool-section-body">
+                      <div class="side-search">
+                      <input id="searchInput" type="search" placeholder="検索する文字列" aria-label="修正後の原稿を検索" />
+                      <button class="tool-button" type="button" data-action="search-clear" aria-label="検索をクリア">×</button>
+                      </div>
+                      <div class="search-meta">
+                      <span id="searchCount">検索語を入力</span>
+                      <div class="search-actions">
+                      <button id="searchPrev" type="button" data-action="search-prev" aria-label="前の検索結果">←</button>
+                      <button id="searchNext" type="button" data-action="search-next" aria-label="次の検索結果">→</button>
+                      </div>
+                      </div>
+                      <div class="replace-field">
+                      <label for="replaceInput">置換後の文字列</label>
+                      <input id="replaceInput" type="text" placeholder="空欄なら削除" autocomplete="off" />
+                      </div>
+                      <div class="replace-actions">
+                      <button type="button" data-replace-action="replace-next">次を置換</button>
+                      <button type="button" data-replace-action="replace-all">すべて置換</button>
+                      </div>
+                      </div>
+                      </div>
+                    </div>
+                  </details>
+                  <details id="otherEditTools" class="pane-popover pane-more-tools" data-pane-menu>
+                    <summary>その他</summary>
+                    <div class="pane-popover-panel pane-popover-wide">
+                      <div class="tool-section">
+                      <summary>
+                      <span><strong>CMSタグを追加</strong></span>
+                      <em>選択範囲</em>
+                      </summary>
+                      <div class="tool-section-body">
+                      <div class="tag-grid">
+                      <button type="button" data-tag="t1">見出し1</button>
+                      <button type="button" data-tag="t2">見出し2</button>
+                      <button type="button" data-tag="t3">見出し3</button>
+                      <button type="button" data-tag="t3red">見出し3・赤</button>
+                      <button type="button" data-tag="label">ラベル</button>
+                      <button type="button" data-tag="strong">強調</button>
+                      <button type="button" data-tag="photo2">写真2列</button>
+                      <button type="button" data-tag="hr">区切り線</button>
+                      </div>
+                      <p class="side-note">「原稿を編集」で、修正後の文字を選択してから使います。</p>
+                      </div>
+                      </div>
+                      <details class="tool-section history-section" data-empty="true">
+                      <summary>
+                      <span><strong>操作履歴</strong></span>
+                      <em id="replaceHistoryCount">0件</em>
+                      </summary>
+                      <div class="tool-section-body">
+                      <div class="replace-history-toolbar">
+                      <span>このタブ内の置換・整形</span>
+                      <button class="history-clear-button" type="button" data-replace-action="clear-history">履歴を消去</button>
+                      </div>
+                      <div id="replaceHistory" class="replace-history-list" aria-live="polite"></div>
+                      <p class="replace-history-note">最新の変更文字は常に表示します。過去の履歴は「変更文字を確認」で開閉できます。直前の本文操作は右上の「↶」で元に戻せます。</p>
+                      </div>
+                      </details>
+                      </details>
+                    </div>
+                  </details>
+                  <button class="pane-action" type="button" data-action="paste-after">貼り付け</button>
+                  <button class="pane-action danger" type="button" data-action="clear-after" aria-label="修正後を消去">×</button>
                 </div>
-                </div>
-                <div class="replace-field">
-                <label for="replaceInput">置換後の文字列</label>
-                <input id="replaceInput" type="text" placeholder="空欄なら削除" autocomplete="off" />
-                </div>
-                <div class="replace-actions">
-                <button type="button" data-replace-action="replace-next">次を置換</button>
-                <button type="button" data-replace-action="replace-all">すべて置換</button>
-                </div>
-                </div>
-                </details>
-                <details class="tool-section">
-                <summary>
-                <span><strong>CMSタグを追加</strong></span>
-                <em>選択範囲</em>
-                </summary>
-                <div class="tool-section-body">
-                <div class="tag-grid">
-                <button type="button" data-tag="t1">見出し1</button>
-                <button type="button" data-tag="t2">見出し2</button>
-                <button type="button" data-tag="t3">見出し3</button>
-                <button type="button" data-tag="t3red">見出し3・赤</button>
-                <button type="button" data-tag="label">ラベル</button>
-                <button type="button" data-tag="strong">強調</button>
-                <button type="button" data-tag="photo2">写真2列</button>
-                <button type="button" data-tag="hr">区切り線</button>
-                </div>
-                <p class="side-note">「原稿を編集」で、修正後の文字を選択してから使います。</p>
-                </div>
-                </details>
-                <details class="tool-section history-section" data-empty="true">
-                <summary>
-                <span><strong>操作履歴</strong></span>
-                <em id="replaceHistoryCount">0件</em>
-                </summary>
-                <div class="tool-section-body">
-                <div class="replace-history-toolbar">
-                <span>このタブ内の置換・整形</span>
-                <button class="history-clear-button" type="button" data-replace-action="clear-history">履歴を消去</button>
-                </div>
-                <div id="replaceHistory" class="replace-history-list" aria-live="polite"></div>
-                <p class="replace-history-note">最新の変更文字は常に表示します。過去の履歴は「変更文字を確認」で開閉できます。直前の本文操作は右上の「↶」で元に戻せます。</p>
-                </div>
-                </details>
-                </details>
-                </div>
-                <div id="selectionToolbar" class="selection-toolbar" role="group" aria-label="選択した文字のCMSタグ" hidden>
+              </header>
+              <div id="selectionToolbar" class="selection-toolbar selection-toolbar-floating" role="group" aria-label="選択した文字のCMSタグ" hidden>
                 <button type="button" data-tag="t1" title="見出し1" aria-label="見出し1">H1</button>
                 <button type="button" data-tag="t2" title="見出し2" aria-label="見出し2">H2</button>
                 <button type="button" data-tag="t3" title="見出し3" aria-label="見出し3">H3</button>
                 <button type="button" data-tag="t3red" title="見出し3・赤">赤</button>
                 <button type="button" data-tag="label">ラベル</button>
                 <button type="button" data-tag="strong">強調</button>
-                </div>
               </div>
-            </div>
-
-            <article class="editor-pane is-reference">
-              <header class="pane-head">
-                <div class="pane-title"><strong>変更前</strong></div>
-                <div class="pane-actions">
-                  <button class="quiet-button" type="button" data-action="paste-before">貼り付け</button>
-                  <button class="quiet-button danger" type="button" data-action="clear-before">消去</button>
-                </div>
-              </header>
-              <textarea id="baselineText" aria-label="変更前" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
-              <footer class="pane-foot"><span id="baselineStats">0文字・0行</span><span>比較元</span></footer>
-            </article>
-
-            <article class="editor-pane is-working">
-              <header class="pane-head">
-                <div class="pane-title"><strong>修正後</strong></div>
-                <div class="pane-actions">
-                  <button class="quiet-button" type="button" data-action="paste-after">貼り付け</button>
-                  <button class="quiet-button danger" type="button" data-action="clear-after">消去</button>
-                </div>
-              </header>
               <div class="working-body">
-
-              <textarea id="workingText" aria-label="修正後" class="editor" spellcheck="false" placeholder="修正後の原稿を貼り付け、またはここで編集"></textarea>
+                <textarea id="workingText" aria-label="修正後" class="editor" spellcheck="false" placeholder="修正後の原稿を貼り付け、またはここで編集"></textarea>
               </div>
-              <footer class="pane-foot"><span id="workingStats">0文字・0行</span><span>修正・出力対象</span></footer>
             </article>
           </section>
 
