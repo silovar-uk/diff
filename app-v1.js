@@ -231,6 +231,7 @@
     if (!state.before || !state.after) {
       state.comparison = { rows: [], summary: emptySummary() };
       state.activeRowIndex = -1;
+      state.reviewFocus = false;
       return;
     }
     const result = Diff.diffRows(state.before, state.after, {
@@ -245,6 +246,7 @@
     reconcileReviewedKeys();
     state.expandedSameRuns.clear();
     const changed = changedIndexes();
+    if (!changed.length) state.reviewFocus = false;
     if (!changed.includes(state.activeRowIndex)) state.activeRowIndex = changed[0] ?? -1;
   }
 
@@ -463,7 +465,7 @@
       renderDiffNavigation();
       return;
     }
-    if (!state.comparison.rows.length) {
+    if (!state.comparison.rows.length || !state.comparison.summary.changes) {
       rowsTarget.innerHTML = '<div class="diff-empty-state"><div><strong>差分はありません</strong><p>比較対象の本文は一致しています。</p></div></div>';
       renderDiffNavigation();
       return;
@@ -562,6 +564,7 @@
     const preview = $('#finalPreviewButton');
     preview.disabled = !state.after;
     preview.classList.toggle('is-ready', Boolean(total) && remaining === 0);
+    $('#reviewFocusButton').disabled = !total;
 
     const warning = $('#copyReviewWarning');
     if (warning) {
