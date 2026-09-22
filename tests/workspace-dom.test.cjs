@@ -38,6 +38,9 @@ async function workspace(mobile = false, saved = null) {
   for (const mobile of [false, true]) {
     const { dom, w, $, input, click, clipboard } = await workspace(mobile);
     assert.equal($('.quick-polish-section').tagName, 'SECTION');
+    assert.equal($('.working-tools').parentElement.classList.contains('editor-tools-slot'), true, 'working tools live in the shared alignment row');
+    assert.equal($('#selectionToolbar').parentElement.classList.contains('editor-tools-slot'), true, 'selection tools share the alignment row');
+    assert.equal($('#workingText').parentElement.querySelector('.working-tools'), null, 'working textarea is no longer pushed down by tool controls');
     assert.equal($('#otherEditTools').open, false, 'editing tools stay progressive until requested');
     assert.equal(w.document.querySelectorAll('details.tool-section[open]').length, 0);
     assert.equal($('#workflowStrip').hidden, false);
