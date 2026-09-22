@@ -15,7 +15,8 @@
     'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
     'displayWhitespace', 'displayUrls', 'searchInput', 'searchCount', 'toast',
     'workflowStrip', 'diffSummary', 'diffMap', 'selectionToolbar', 'moreMenu', 'moreMenuButton',
-    'reviewProgress', 'reviewSidebarProgress', 'finalPreviewDialog', 'finalPreviewText', 'finalPreviewButton'
+    'reviewProgress', 'reviewSidebarProgress', 'finalPreviewDialog', 'finalPreviewText', 'finalPreviewButton',
+    'helpButton', 'helpPanel', 'helpCurrentTitle', 'helpCurrentText', 'clearAllButton'
   ];
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -676,6 +677,7 @@
   function renderUndo() {
     $('#undoButton').disabled = !state.undoStack.length && !typingBase;
     $('#redoButton').disabled = !state.redoStack.length;
+    $('#clearAllButton').disabled = !state.before.trim() && !state.after.trim();
   }
 
   function renderSearch() {
@@ -708,6 +710,7 @@
     renderReviewProgress();
     renderDisplayStateSummary();
     syncDisplayControls();
+    renderHelp();
   }
 
   function notify(message) {
@@ -719,6 +722,7 @@
   }
 
   function setMode(mode) {
+    closeHelp();
     state.mode = mode === 'compare' ? 'compare' : 'edit';
     if (state.mode === 'compare') calculateComparison();
     else state.reviewFocus = false;
@@ -745,19 +749,101 @@
     }, 'サンプルテキストを入れました');
   }
 
-  async function pasteInto(side) {
-    try {
-      const text = await navigator.clipboard.readText();
-      commit(() => { state[side] = text; }, side === 'before' ? '変更前へ貼り付けました' : '修正後へ貼り付けました');
-    } catch (_) {
-      notify('自動で貼り付けられませんでした。入力欄で通常の貼り付けをご利用ください');
-    }
-  }
-
   function clearSide(side) {
     if (!state[side]) return;
     if (!window.confirm(side === 'before' ? '変更前の原稿を消去しますか？' : '修正後の原稿を消去しますか？')) return;
     commit(() => { state[side] = ''; }, '原稿を消去しました');
+  }
+
+  function clearAllDocuments() {
+    if (!state.before && !state.after) return false;
+    const changed = commit(() => {
+      state.before = '';
+      state.after = '';
+      state.mode = 'edit';
+      state.reviewFocus = false;
+      state.activeRowIndex = -1;
+      state.search = { query: '', matches: [], current: -1 };
+    }, '変更前・修正後の原稿を削除しました');
+    $('#searchInput').value = '';
+    $('#replaceInput').value = '';
+    computeSearch();
+    closeHelp();
+    closePaneMenus();
+    closeReviewMenu();
+    closeMoreMenu();
+    return changed;
+  }
+
+  function getHelpContext() {
+    const hasBefore = Boolean(state.before.trim());
+    const hasAfter = Boolean(state.after.trim());
+    const total = changedIndexes().length;
+    const reviewed = reviewedCount();
+    const remaining = Math.max(0, total - reviewed);
+
+    if (!hasBefore && !hasAfter) {
+      return {
+        title: 'まず左右に原稿を入れます',
+        text: '左に変更前、右に修正後を貼り付けてください。'
+      };
+    }
+    if (!hasBefore) {
+      return {
+        title: '変更前の原稿を追加してください',
+        text: '左側に元の原稿を貼り付けると比較できます。'
+      };
+    }
+    if (!hasAfter) {
+      return {
+        title: '修正後の原稿を追加してください',
+        text: '右側に修正版を貼り付けると比較できます。'
+      };
+    }
+    if (state.mode === 'edit') {
+      return {
+        title: total ? String(total) + '件の変更があります' : '比較の準備ができました',
+        text: total ? '「レビュー」に切り替えると変更だけ確認できます。' : '「レビュー」に切り替えて差分を確認できます。'
+      };
+    }
+    if (total && remaining) {
+      return {
+        title: String(reviewed) + ' / ' + String(total) + '件を確認済み',
+        text: 'J / Kで変更を移動し、Vで確認済みにできます。'
+      };
+    }
+    if (total && remaining === 0) {
+      return {
+        title: '確認が完了しました',
+        text: '「最終稿を読む」か、右上の「出力」へ進めます。'
+      };
+    }
+    return {
+      title: '変更はありません',
+      text: '変更前と修正後の本文は同一です。'
+    };
+  }
+
+  function renderHelp() {
+    const context = getHelpContext();
+    $('#helpCurrentTitle').textContent = context.title;
+    $('#helpCurrentText').textContent = context.text;
+  }
+
+  function openHelp() {
+    renderHelp();
+    $('#helpPanel').hidden = false;
+    $('#helpButton').setAttribute('aria-expanded', 'true');
+  }
+
+  function closeHelp(restoreFocus = false) {
+    $('#helpPanel').hidden = true;
+    $('#helpButton').setAttribute('aria-expanded', 'false');
+    if (restoreFocus) $('#helpButton').focus();
+  }
+
+  function toggleHelp() {
+    $('#helpPanel').hidden ? openHelp() : closeHelp();
   }
 
   function protectedTransform(text, transform) {
@@ -979,9 +1065,10 @@
     });
     // Capture runs before clear-all's own handler; closing does not cancel its action.
     document.addEventListener('click', event => {
-      if (!event.target.closest('.more-menu-wrap') || event.target.closest('[data-clear-all]')) closeMoreMenu();
+      if (!event.target.closest('.more-menu-wrap')) closeMoreMenu();
       if (!event.target.closest('[data-pane-menu]')) closePaneMenus();
       if (!event.target.closest('.review-menu')) closeReviewMenu();
+      if (!event.target.closest('.help-wrap')) closeHelp();
     }, true);
 
     $('#baselineText').addEventListener('input', (event) => {
@@ -1038,8 +1125,6 @@
         'mode-edit': () => setMode('edit'),
         'mode-compare': () => setMode('compare'),
         'load-sample': loadSample,
-        'paste-before': () => pasteInto('before'),
-        'paste-after': () => pasteInto('after'),
         'clear-before': () => clearSide('before'),
         'clear-after': () => clearSide('after'),
         'transform-space': () => runTransform('space'),
@@ -1058,6 +1143,7 @@
         'open-display': openDisplayDialog,
         'close-display': () => $('#displayDialog').close(),
         'apply-display': applyDisplay,
+        'toggle-help': toggleHelp,
         'toggle-copy-menu': toggleCopyMenu,
         'copy-plain': () => copyText('plain'),
         'copy-html': () => copyText('html'),
@@ -1079,18 +1165,28 @@
       if (event.target === $('#finalPreviewDialog')) closeFinalPreview();
     });
     document.addEventListener('keydown', (event) => {
-      const editing = event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement || event.target.isContentEditable;
+      const isDocumentEditor = event.target === $('#baselineText') || event.target === $('#workingText');
+      const genericEditing = event.target instanceof HTMLInputElement || event.target.isContentEditable || (event.target instanceof HTMLTextAreaElement && !isDocumentEditor);
+      const editing = genericEditing || isDocumentEditor;
+      const modKey = event.ctrlKey || event.metaKey;
       if (event.key === 'Escape') {
         closeCopyMenu();
         if (!$('#moreMenu').hidden) closeMoreMenu(true);
+        if (!$('#helpPanel').hidden) closeHelp(true);
         closePaneMenus();
         closeReviewMenu();
         if ($('#displayDialog').open) $('#displayDialog').close();
         if ($('#finalPreviewDialog').open) closeFinalPreview();
       }
-      if (!editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      if (modKey && event.key.toLowerCase() === 'z' && (isDocumentEditor || !genericEditing)) {
         event.preventDefault();
         event.shiftKey ? redo() : undo();
+        return;
+      }
+      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'y' && (isDocumentEditor || !genericEditing)) {
+        event.preventDefault();
+        redo();
+        return;
       }
       if (!editing && !event.isComposing && !document.querySelector('dialog[open]') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && state.mode === 'compare') {
         if (event.key.toLowerCase() === 'j') { event.preventDefault(); moveDiff(1); }
@@ -1121,6 +1217,7 @@
       };
     },
     getState() { return JSON.parse(snapshotData()); },
+    clearAllDocuments,
     recalculate() { calculateComparison(); renderAll(); }
   };
 
