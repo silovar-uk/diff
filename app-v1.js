@@ -1182,9 +1182,9 @@
         if ($('#displayDialog').open) $('#displayDialog').close();
         if ($('#finalPreviewDialog').open) closeFinalPreview();
       }
-      if (modKey && event.key.toLowerCase() === 'z' && (isDocumentEditor || !genericEditing)) {
+      if (modKey && event.key.toLowerCase() === 'z' && !event.shiftKey && (isDocumentEditor || !genericEditing)) {
         event.preventDefault();
-        event.shiftKey ? redo() : undo();
+        undo();
         return;
       }
       if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'y' && (isDocumentEditor || !genericEditing)) {
