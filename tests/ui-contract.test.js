@@ -175,6 +175,10 @@ assert.ok(clearAll.includes('window.TextReviewApp?.clearAllDocuments?.()'), 'cle
 assert.ok(app.includes("event.target === $('#baselineText')"), 'before editor must use app-level undo');
 assert.ok(app.includes("event.target === $('#workingText')"), 'after editor must use app-level undo');
 assert.ok(app.includes("event.key.toLowerCase() === 'z'"), 'Ctrl/Cmd+Z handling is required');
+assert.ok(html.includes('title="やり直す Ctrl+Y"'), 'redo button must advertise Ctrl+Y');
+assert.ok(html.includes('aria-keyshortcuts="Control+Y"'), 'redo accessibility shortcut must use Ctrl+Y');
+assert.ok(html.includes('<kbd>Ctrl</kbd> + <kbd>Y</kbd>'), 'help must document Ctrl+Y for redo');
+assert.ok(!html.includes('Ctrl+Shift+Z'), 'Ctrl+Shift+Z must not be advertised as redo');
 assert.ok(!html.includes('原稿へ戻る'));
 ['BEFORE / REFERENCE', 'AFTER / WORKING', 'QUICK POLISH', 'SESSION HISTORY', 'EDITING TOOLS'].forEach(label => assert.ok(!html.includes(label)));
 assert.match(html, /class="topbar app-bar"[\s\S]*?id="editModeButton"[\s\S]*?id="reviewProgress"[\s\S]*?id="diffPrev"[\s\S]*?id="copyButton"/);
