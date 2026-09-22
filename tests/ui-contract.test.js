@@ -29,7 +29,9 @@ const replaceCss = read('replace-tools-v1.css');
   'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
   'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
   'displayWhitespace', 'displayUrls', 'searchInput', 'replaceInput',
-  'replaceHistory', 'replaceHistoryCount', 'chatgptReviewButton', 'toast'
+  'replaceHistory', 'replaceHistoryCount', 'chatgptReviewButton', 'toast',
+  'reviewProgress', 'reviewSidebarProgress', 'reviewFocusButton',
+  'finalPreviewButton', 'finalPreviewDialog', 'finalPreviewText'
 ].forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing v1 UI anchor: ${id}`));
 
 ['projectTitle', 'profileSelect', 'reviewRail', 'reviewPanel', 'workspaceDisplayDialog']
@@ -45,7 +47,7 @@ const replaceCss = read('replace-tools-v1.css');
   .forEach((file) => assert.ok(html.includes(`src="${file}"`), `v1 runtime missing: ${file}`));
 assert.ok(html.includes('href="replace-tools-v1.css"'), 'replace tool styles must be loaded');
 assert.ok(html.includes('href="ui-refresh.css"'), 'UI refresh styles must be loaded');
-assert.ok(html.includes('class="workflow-strip"'), 'workflow guidance must be visible');
+assert.ok(html.includes('class="workflow-strip workflow-start"'), 'task-first empty-state guidance must be visible');
 assert.ok(html.includes('class="tool-section"'), 'editing tools must be grouped into collapsible sections');
 assert.equal((html.match(/id="chatgptReviewButton"/g) || []).length, 1, 'ChatGPT review button must be unique');
 assert.ok(html.indexOf('src="diff-engine-v1.js"') < html.indexOf('src="chatgpt-review-v1.js"'), 'ChatGPT module must load after the diff engine');
@@ -114,6 +116,11 @@ assert.ok(css.includes('.desk-toolbar {'), 'fixed mode controls are required');
 assert.ok(css.includes('position:sticky'), 'mode controls must remain visible while scrolling');
 assert.ok(uiRefresh.includes('.tool-section summary'), 'collapsible editing tool styles are required');
 assert.ok(uiRefresh.includes('.editor-pane.is-working'), 'working copy must be visually distinguished');
+assert.ok(uiRefresh.includes('.working-tools'), 'editing tools must live with the working copy');
+assert.ok(uiRefresh.includes('.review-toggle'), 'reviewed state control styles are required');
+assert.ok(uiRefresh.includes('.unchanged-fold'), 'unchanged-line folding styles are required');
+assert.ok(uiRefresh.includes('.final-preview-text'), 'final reading mode styles are required');
+assert.ok(uiRefresh.includes('body.review-focus'), 'focus review mode styles are required');
 
 assert.ok(excel.includes('root.TextReviewApp?.getComparison?.()'), 'Excel must reuse the page comparison model');
 assert.ok(excel.includes('part.type === changedType ? COLOR.red'), 'both Excel sides must use red changed text');
@@ -134,6 +141,11 @@ assert.ok(html.indexOf('searchInput') < html.indexOf('CMSタグを追加'));
 assert.ok(html.indexOf('CMSタグを追加') < html.indexOf('replaceHistoryCount'));
 assert.ok(app.includes('updateWorkflowVisibility'));
 assert.ok(app.includes("$('#chatgptReviewButton').hidden = mode !== 'compare'"));
+assert.ok(app.includes('function reviewKey(row)'), 'review progress must use content-derived keys');
+assert.ok(app.includes('function toggleReviewed(index)'), 'individual changes must be reviewable');
+assert.ok(app.includes('function renderCollapsedRows()'), 'unchanged runs must be collapsible');
+assert.ok(app.includes('function openFinalPreview()'), 'final text reading mode is required');
+assert.ok(app.includes('function toggleReviewFocus()'), 'focus review mode is required');
 assert.ok(html.includes('id="moreMenu"'));
 assert.match(html, /id="moreMenu"[^>]*hidden>[\s\S]*?data-clear-all/);
 assert.ok(!html.includes('原稿へ戻る'));
@@ -141,6 +153,8 @@ assert.ok(!html.includes('原稿へ戻る'));
 assert.match(html, /class="desk-toolbar"[\s\S]*?id="diffSummary"[\s\S]*?id="diffPrev"[\s\S]*?id="chatgptReviewButton"/);
 assert.ok(app.includes("mobile.addEventListener('change', syncOtherTools)"));
 assert.ok(app.includes("event.key.toLowerCase() === 'j'"));
+assert.ok(app.includes("event.key.toLowerCase() === 'v'"), 'V must toggle reviewed state for the active diff');
+assert.ok(uiRefresh.includes('grid-template-columns:1fr;'), 'mobile review must support a unified vertical layout');
 assert.ok(app.includes('!event.isComposing'));
 assert.ok(uiRefresh.includes('prefers-reduced-motion'));
 console.log('workspace redesign contract tests: passed');
