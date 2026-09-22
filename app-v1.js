@@ -299,9 +299,32 @@
 
   function tagChips(row, side) {
     if (!state.displayOptions.showTags) return '';
-    const tags = rowRaw(row, side).match(/<\/?[A-Za-z][^>]*>/g) || [];
+    const known = side === 'before' ? row.beforeTags : row.afterTags;
+    const tags = Array.isArray(known) ? known : (rowRaw(row, side).match(/<\/?[A-Za-z][^>]*>/g) || []);
     if (!tags.length) return '';
     return `<div class="tag-context">${tags.map((tag) => `<code class="tag-chip">${escapeHTML(tag)}</code>`).join('')}</div>`;
+  }
+
+  function htmlDiffDetail(row, index) {
+    if (state.compareOptions.ignoreHtmlTags || !row.htmlChanged) return '';
+    const beforeTags = Array.isArray(row.beforeTags) ? row.beforeTags : [];
+    const afterTags = Array.isArray(row.afterTags) ? row.afterTags : [];
+    const renderTags = (tags) => tags.length
+      ? tags.map((tag) => `<code>${escapeHTML(tag)}</code>`).join('')
+      : '<span class="html-diff-none">（タグなし）</span>';
+    return `<div class="html-diff-detail" data-html-detail="${index}" hidden>
+      <div><strong>変更前のHTML</strong><div class="html-diff-code">${renderTags(beforeTags)}</div></div>
+      <div><strong>修正後のHTML</strong><div class="html-diff-code">${renderTags(afterTags)}</div></div>
+    </div>`;
+  }
+
+  function toggleHtmlDetail(index) {
+    const detail = document.querySelector(`[data-html-detail="${index}"]`);
+    if (!detail) return;
+    const opening = detail.hidden;
+    detail.hidden = !opening;
+    const button = document.querySelector(`[data-html-diff-index="${index}"]`);
+    if (button) button.setAttribute('aria-expanded', String(opening));
   }
 
   function renderInline(row, side) {
@@ -337,10 +360,15 @@
       const beforeEmpty = !row.before ? ' is-empty' : '';
       const afterEmpty = !row.after ? ' is-empty' : '';
       const active = index === state.activeRowIndex ? ' is-active' : '';
-      const symbol = marker(row.kind);
-      const label = row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : '削除';
-      const rail = symbol ? `<button type="button" class="diff-marker ${row.kind}" data-diff-index="${index}" title="${label}を変更前の表記に戻す（HTMLタグは保持）" aria-label="${label}を変更前の表記に戻す">${symbol}</button>` : '';
-      return `<article class="diff-row${active}" data-diff-row="${index}"><div class="diff-cell before${beforeEmpty}">${renderInline(row, 'before')}</div><div class="diff-rail-cell">${rail}</div><div class="diff-cell after${afterEmpty}">${renderInline(row, 'after')}</div></article>`;
+      const htmlVisible = !state.compareOptions.ignoreHtmlTags && row.htmlChanged;
+      const htmlOnly = htmlVisible && !row.textChanged;
+      const symbol = htmlOnly ? '◇' : marker(row.kind);
+      const label = htmlOnly ? 'HTML変更' : row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : '削除';
+      const htmlAttrs = htmlVisible ? ` data-html-diff-index="${index}" aria-expanded="false"` : '';
+      const htmlLabel = htmlVisible ? '<small>HTML</small>' : '';
+      const markerClass = htmlOnly ? 'html' : row.kind;
+      const rail = symbol ? `<button type="button" class="diff-marker ${markerClass}${htmlVisible ? ' has-html' : ''}" data-diff-index="${index}"${htmlAttrs} title="${htmlVisible ? 'HTML変更の詳細を表示' : label}" aria-label="${htmlVisible ? label + '。HTML変更の詳細を表示' : label}"><span>${symbol}</span>${htmlLabel}</button>` : '';
+      return `<article class="diff-row${active}${htmlOnly ? ' is-html-only' : ''}" data-diff-row="${index}"><div class="diff-cell before${beforeEmpty}">${renderInline(row, 'before')}</div><div class="diff-rail-cell">${rail}</div><div class="diff-cell after${afterEmpty}">${renderInline(row, 'after')}</div>${htmlDiffDetail(row, index)}</article>`;
     }).join('');
     renderDiffNavigation();
   }
@@ -501,13 +529,29 @@
     $('#searchNext').disabled = !state.search.matches.length;
   }
 
+  function renderDisplayStateSummary() {
+    const target = $('#displayStateSummary');
+    if (!target) return;
+    const compareLabel = state.compareOptions.ignoreHtmlTags ? '本文のみ' : 'HTMLも比較';
+    const tagLabel = state.displayOptions.showTags ? 'タグ表示' : 'タグ非表示';
+    target.innerHTML = `<button type="button" data-action="open-display" title="比較と表示の設定を変更"><span>${escapeHTML(compareLabel)}</span><span>${escapeHTML(tagLabel)}</span></button>`;
+  }
+
+  function syncDisplayControls() {
+    $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
+    $('#displayShowTags').checked = state.displayOptions.showTags;
+    $('#displayWhitespace').checked = state.displayOptions.showWhitespace;
+    $('#displayUrls').checked = state.displayOptions.highlightUrls;
+  }
+
   function renderAll() {
     renderMode();
     updateStatus();
     renderStats();
     renderUndo();
     renderSearch();
-    $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
+    renderDisplayStateSummary();
+    syncDisplayControls();
   }
 
   function notify(message) {
@@ -649,16 +693,17 @@
 
   function applyDisplay() {
     state.compareOptions.ignoreHtmlTags = $('#ignoreHtmlTagsToggle').checked;
-    calculateComparison();
     state.displayOptions = {
       showTags: $('#displayShowTags').checked,
       showWhitespace: $('#displayWhitespace').checked,
       highlightUrls: $('#displayUrls').checked
     };
+    // Read the complete configuration first, then recalculate once.
+    calculateComparison();
     $('#displayDialog').close();
     renderAll();
     persist();
-    notify('表示設定を反映しました');
+    notify('比較・表示設定を反映しました');
   }
 
   function stripTags(value) {
@@ -675,7 +720,9 @@
     const summary = state.comparison.summary;
     const lines = ['差分確認', `置換 ${summary.replaces}件／追加 ${summary.inserts}件／削除 ${summary.deletes}件`, ''];
     state.comparison.rows.filter((row) => row.kind !== 'same').forEach((row, index) => {
-      lines.push(`${index + 1}. ${marker(row.kind)} ${row.before ? row.before.trim() : '（なし）'} → ${row.after ? row.after.trim() : '（なし）'}`);
+      const htmlOnly = !state.compareOptions.ignoreHtmlTags && row.htmlChanged && !row.textChanged;
+      const prefix = htmlOnly ? '◇ HTML' : marker(row.kind);
+      lines.push(`${index + 1}. ${prefix} ${row.before ? row.before.trim() : '（なし）'} → ${row.after ? row.after.trim() : '（なし）'}`);
     });
     return lines.join('\n');
   }
@@ -761,6 +808,13 @@
     });
 
     document.addEventListener('click', (event) => {
+      const htmlButton = event.target.closest('[data-html-diff-index]');
+      if (htmlButton) {
+        const index = Number(htmlButton.dataset.htmlDiffIndex);
+        selectDiff(index, false);
+        toggleHtmlDetail(index);
+        return;
+      }
       const diffButton = event.target.closest('[data-diff-index]');
       if (diffButton) { selectDiff(Number(diffButton.dataset.diffIndex)); return; }
       const tagButton = event.target.closest('[data-tag]');
