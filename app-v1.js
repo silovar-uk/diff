@@ -401,11 +401,65 @@
     return `${tagChips(row, side)}${html || '<span class="diff-empty">&nbsp;</span>'}`;
   }
 
+  function renderDiffRow(row, index) {
+    const beforeEmpty = !row.before ? ' is-empty' : '';
+    const afterEmpty = !row.after ? ' is-empty' : '';
+    const active = index === state.activeRowIndex ? ' is-active' : '';
+    const htmlVisible = !state.compareOptions.ignoreHtmlTags && row.htmlChanged;
+    const htmlOnly = htmlVisible && !row.textChanged;
+    const symbol = htmlOnly ? '◇' : marker(row.kind);
+    const label = htmlOnly ? 'HTML変更' : row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : row.kind === 'delete' ? '削除' : '';
+    const htmlAttrs = htmlVisible ? ` data-html-diff-index="${index}" aria-expanded="false"` : '';
+    const htmlLabel = htmlVisible ? '<small>HTML</small>' : '';
+    const markerClass = htmlOnly ? 'html' : row.kind;
+    const markerButton = symbol
+      ? `<button type="button" class="diff-marker ${markerClass}${htmlVisible ? ' has-html' : ''}" data-diff-index="${index}"${htmlAttrs} title="${htmlVisible ? 'HTML変更の詳細を表示' : label}" aria-label="${htmlVisible ? label + '。HTML変更の詳細を表示' : label}"><span>${symbol}</span>${htmlLabel}</button>`
+      : '';
+    const reviewed = row.kind !== 'same' && state.reviewedKeys.has(reviewKey(row));
+    const reviewButton = row.kind !== 'same'
+      ? `<button type="button" class="review-toggle${reviewed ? ' is-reviewed' : ''}" data-review-index="${index}" aria-pressed="${String(reviewed)}" title="${reviewed ? '未確認に戻す' : '確認済みにする'}" aria-label="${label}を${reviewed ? '未確認に戻す' : '確認済みにする'}">${reviewed ? '✓' : '○'}</button>`
+      : '';
+    const rail = markerButton || reviewButton ? `<div class="diff-rail-stack">${markerButton}${reviewButton}</div>` : '';
+    return `<article class="diff-row${active}${htmlOnly ? ' is-html-only' : ''}${reviewed ? ' is-reviewed' : ''}" data-diff-row="${index}">
+      <div class="diff-cell before${beforeEmpty}">${renderInline(row, 'before')}</div>
+      <div class="diff-rail-cell">${rail}</div>
+      <div class="diff-cell after${afterEmpty}">${renderInline(row, 'after')}</div>
+      ${htmlDiffDetail(row, index)}
+    </article>`;
+  }
+
+  function renderCollapsedRows() {
+    const rows = state.comparison.rows;
+    const output = [];
+    let index = 0;
+    while (index < rows.length) {
+      if (rows[index].kind !== 'same') {
+        output.push(renderDiffRow(rows[index], index));
+        index += 1;
+        continue;
+      }
+      let end = index;
+      while (end + 1 < rows.length && rows[end + 1].kind === 'same') end += 1;
+      const count = end - index + 1;
+      const key = `${index}-${end}`;
+      if (count >= 5 && !state.expandedSameRuns.has(key)) {
+        output.push(renderDiffRow(rows[index], index));
+        const hiddenCount = Math.max(0, count - 2);
+        output.push(`<div class="unchanged-fold" data-same-run="${key}"><button type="button" data-expand-same="${key}">同一 ${hiddenCount}行 <span>展開</span></button></div>`);
+        output.push(renderDiffRow(rows[end], end));
+      } else {
+        for (let rowIndex = index; rowIndex <= end; rowIndex += 1) output.push(renderDiffRow(rows[rowIndex], rowIndex));
+      }
+      index = end + 1;
+    }
+    return output.join('');
+  }
+
   function renderComparison() {
     const rowsTarget = $('#diffRows');
     if (!state.before || !state.after) {
       const title = !state.before && !state.after ? '原稿を入力してください' : !state.before ? '変更前の原稿を入力してください' : '修正後の原稿を入力してください';
-      rowsTarget.innerHTML = `<div class="diff-empty-state"><div><strong>${title}</strong><p>左右に原稿を入れると、同じ高さで差分を並べます。</p></div></div>`;
+      rowsTarget.innerHTML = `<div class="diff-empty-state"><div><strong>${title}</strong><p>左右に原稿を入れると、レビューすべき変更を並べます。</p></div></div>`;
       renderDiffNavigation();
       return;
     }
@@ -414,20 +468,7 @@
       renderDiffNavigation();
       return;
     }
-    rowsTarget.innerHTML = state.comparison.rows.map((row, index) => {
-      const beforeEmpty = !row.before ? ' is-empty' : '';
-      const afterEmpty = !row.after ? ' is-empty' : '';
-      const active = index === state.activeRowIndex ? ' is-active' : '';
-      const htmlVisible = !state.compareOptions.ignoreHtmlTags && row.htmlChanged;
-      const htmlOnly = htmlVisible && !row.textChanged;
-      const symbol = htmlOnly ? '◇' : marker(row.kind);
-      const label = htmlOnly ? 'HTML変更' : row.kind === 'replace' ? '置換' : row.kind === 'insert' ? '追加' : '削除';
-      const htmlAttrs = htmlVisible ? ` data-html-diff-index="${index}" aria-expanded="false"` : '';
-      const htmlLabel = htmlVisible ? '<small>HTML</small>' : '';
-      const markerClass = htmlOnly ? 'html' : row.kind;
-      const rail = symbol ? `<button type="button" class="diff-marker ${markerClass}${htmlVisible ? ' has-html' : ''}" data-diff-index="${index}"${htmlAttrs} title="${htmlVisible ? 'HTML変更の詳細を表示' : label}" aria-label="${htmlVisible ? label + '。HTML変更の詳細を表示' : label}"><span>${symbol}</span>${htmlLabel}</button>` : '';
-      return `<article class="diff-row${active}${htmlOnly ? ' is-html-only' : ''}" data-diff-row="${index}"><div class="diff-cell before${beforeEmpty}">${renderInline(row, 'before')}</div><div class="diff-rail-cell">${rail}</div><div class="diff-cell after${afterEmpty}">${renderInline(row, 'after')}</div>${htmlDiffDetail(row, index)}</article>`;
-    }).join('');
+    rowsTarget.innerHTML = renderCollapsedRows();
     renderDiffNavigation();
   }
 
@@ -474,13 +515,16 @@
 
   function applyWorkspaceMode(mode) {
     document.body.dataset.workspaceMode = mode;
+    document.body.classList.toggle('review-focus', mode === 'compare' && state.reviewFocus);
     $('.control-sidebar').dataset.workspaceMode = mode;
-    $('.control-sidebar').setAttribute('aria-label', mode === 'compare' ? '差分の概要' : '修正後の原稿を整えるツール');
+    $('.control-sidebar').setAttribute('aria-label', 'レビュー概要');
     $('#chatgptReviewButton').hidden = mode !== 'compare';
     $('#diffSummary').hidden = mode !== 'compare';
     $('#compareOptions').hidden = mode !== 'compare';
     $('#editModeButton').setAttribute('aria-pressed', String(mode === 'edit'));
     $('#compareModeButton').setAttribute('aria-pressed', String(mode === 'compare'));
+    $('#reviewFocusButton').setAttribute('aria-pressed', String(mode === 'compare' && state.reviewFocus));
+    $('#reviewFocusButton').textContent = state.reviewFocus ? '集中を終了' : '集中';
     updateWorkflowVisibility();
     updateSelectionToolbar();
   }
@@ -490,28 +534,65 @@
     [['diffTotal', 'changes'], ['diffReplace', 'replaces'], ['diffInsert', 'inserts'], ['diffDelete', 'deletes']].forEach(([id, key]) => {
       $(`#${id}`).textContent = summary[key];
     });
+    const total = changedIndexes().length;
+    const reviewed = reviewedCount();
+    const remaining = Math.max(0, total - reviewed);
     $('#reviewOverview').textContent = !state.before || !state.after
-      ? '左右に原稿を入力すると比較できます。'
-      : summary.changes ? `${summary.changes}か所の変更` : '本文は一致しています';
+      ? '左右に原稿を入力するとレビューできます。'
+      : !total ? '変更はありません'
+      : remaining ? `未確認 ${remaining}件` : 'すべて確認済み';
+    $('#reviewSidebarProgress').textContent = `${reviewed} / ${total}`;
     $('#reviewDistribution').innerHTML = [['replace', 'replaces', '置換'], ['insert', 'inserts', '追加'], ['delete', 'deletes', '削除']].map(([kind, key, label]) =>
       `<div class="review-stat ${kind}"><span>${marker(kind)} ${label}</span><strong>${summary[key]}</strong><div class="review-bar"><span style="width:${summary.changes ? summary[key] / summary.changes * 100 : 0}%"></span></div></div>`
     ).join('');
   }
 
+  function renderReviewProgress() {
+    const total = changedIndexes().length;
+    const reviewed = reviewedCount();
+    const remaining = Math.max(0, total - reviewed);
+    const target = $('#reviewProgress');
+    target.classList.toggle('is-complete', total > 0 && remaining === 0);
+    target.innerHTML = !total
+      ? '<span>変更なし</span>'
+      : remaining
+        ? `<span><strong>${reviewed}</strong> / ${total} 確認</span>`
+        : `<span><strong>✓ ${reviewed}</strong> / ${total} 確認完了</span>`;
+
+    const preview = $('#finalPreviewButton');
+    preview.disabled = !state.after;
+    preview.classList.toggle('is-ready', Boolean(total) && remaining === 0);
+
+    const warning = $('#copyReviewWarning');
+    if (warning) {
+      warning.hidden = !remaining;
+      warning.textContent = remaining ? `未確認の変更が${remaining}件あります。そのまま出力もできます。` : '';
+    }
+  }
+
   function renderDiffMap() {
     const map = $('#diffMap');
     const indexes = changedIndexes();
-    // Keep buttons stable while navigating so keyboard focus is retained.
-    const signature = indexes.map(index => `${index}:${state.comparison.rows[index].kind}`).join(',') + `/${state.comparison.rows.length}`;
+    const signature = indexes.map(index => {
+      const row = state.comparison.rows[index];
+      return `${index}:${row.kind}:${row.htmlChanged ? 1 : 0}`;
+    }).join(',') + `/${state.comparison.rows.length}/${state.compareOptions.ignoreHtmlTags ? 1 : 0}`;
     if (map.dataset.signature !== signature) {
       map.dataset.signature = signature;
       map.innerHTML = indexes.map((index, position) => {
-        const kind = state.comparison.rows[index].kind;
-        const label = { replace: '置換', insert: '追加', delete: '削除' }[kind];
-        return `<button type="button" class="diff-map-marker ${kind}" data-diff-index="${index}" style="top:${index / Math.max(1, state.comparison.rows.length) * 100}%" title="差分${position + 1}：${label}" aria-label="差分${position + 1}へ移動（${label}）">${marker(kind)}</button>`;
+        const row = state.comparison.rows[index];
+        const htmlOnly = !state.compareOptions.ignoreHtmlTags && row.htmlChanged && !row.textChanged;
+        const kind = htmlOnly ? 'html' : row.kind;
+        const label = htmlOnly ? 'HTML変更' : { replace: '置換', insert: '追加', delete: '削除' }[row.kind];
+        return `<button type="button" class="diff-map-marker ${kind}" data-diff-index="${index}" style="top:${index / Math.max(1, state.comparison.rows.length) * 100}%" title="差分${position + 1}：${label}" aria-label="差分${position + 1}へ移動（${label}）">${htmlOnly ? '◇' : marker(row.kind)}</button>`;
       }).join('');
     }
-    map.querySelectorAll('button').forEach(button => button.setAttribute('aria-current', String(Number(button.dataset.diffIndex) === state.activeRowIndex)));
+    map.querySelectorAll('button').forEach((button) => {
+      const index = Number(button.dataset.diffIndex);
+      const row = state.comparison.rows[index];
+      button.setAttribute('aria-current', String(index === state.activeRowIndex));
+      button.classList.toggle('is-reviewed', Boolean(row && state.reviewedKeys.has(reviewKey(row))));
+    });
   }
 
   function updateSelectionToolbar() {
@@ -608,6 +689,7 @@
     renderStats();
     renderUndo();
     renderSearch();
+    renderReviewProgress();
     renderDisplayStateSummary();
     syncDisplayControls();
   }
