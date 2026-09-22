@@ -155,3 +155,131 @@ body[data-workspace-mode="compare"] .edit-only { display:none !important; }
   .top-actions { gap:4px; }
   .mode-switch button { padding:6px; font-size:10px; }
 }
+
+
+/* HTML comparison UX — 2026-09-22 */
+.display-state-summary {
+  display:flex;
+  align-items:center;
+}
+.display-state-summary button {
+  display:inline-flex;
+  gap:5px;
+  align-items:center;
+  padding:5px 7px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:#fff;
+  color:var(--ink-soft);
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.display-state-summary button:hover {
+  border-color:#b9c9e8;
+  color:var(--blue);
+  background:#f7f9ff;
+}
+.display-state-summary button span + span::before {
+  content:"·";
+  margin-right:5px;
+  color:var(--ink-faint);
+}
+
+.display-options-section {
+  display:grid;
+  gap:8px;
+}
+.display-options-section + .display-options-section {
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.display-options-title {
+  margin:0;
+  color:var(--ink-faint);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+
+.diff-marker.has-html {
+  min-height:30px;
+  padding:3px 2px;
+  flex-direction:column;
+  gap:1px;
+}
+.diff-marker.has-html > span {
+  line-height:1;
+}
+.diff-marker.has-html small {
+  display:block;
+  font-size:7px;
+  line-height:1;
+  letter-spacing:.02em;
+}
+.diff-marker.html {
+  border-color:#d9cef5;
+  color:#604a9e;
+  background:#faf8ff;
+}
+.diff-marker.html:hover,
+.diff-marker.html[aria-expanded="true"] {
+  border-color:#bcaee5;
+  background:#f0ebff;
+}
+
+.html-diff-detail {
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:8px;
+  padding:9px 10px;
+  border-top:1px solid var(--line);
+  background:#fafbfe;
+}
+.html-diff-detail[hidden] {
+  display:none;
+}
+.html-diff-detail > div {
+  min-width:0;
+}
+.html-diff-detail strong {
+  display:block;
+  margin-bottom:5px;
+  color:var(--ink-faint);
+  font-size:9px;
+  letter-spacing:.04em;
+}
+.html-diff-code {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+}
+.html-diff-code code {
+  max-width:100%;
+  padding:3px 5px;
+  overflow-wrap:anywhere;
+  border:1px solid #e1d9f5;
+  border-radius:5px;
+  color:#604a9e;
+  background:#fff;
+  font-size:9px;
+}
+.html-diff-none {
+  color:var(--ink-faint);
+  font-size:10px;
+}
+
+@media (max-width:767px) {
+  .display-state-summary {
+    order:4;
+    width:100%;
+  }
+  .display-state-summary button {
+    max-width:100%;
+  }
+  .html-diff-detail {
+    grid-template-columns:1fr;
+  }
+}
