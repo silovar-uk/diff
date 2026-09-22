@@ -108,6 +108,10 @@
       .replace(/<\/?[A-Za-z][^>]*>/g, '');
   }
 
+  function extractTags(value) {
+    return String(value || '').match(/<\/?[A-Za-z][^>]*>/g) || [];
+  }
+
   function decodeEntities(value) {
     const named = {
       nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
@@ -162,13 +166,14 @@
     return { type: 'text', subtype: '', structural: false };
   }
 
-  function visibleText(rawLine, meta, options) {
+  function visibleText(rawLine, meta) {
     const raw = String(rawLine || '');
-    if (!options.ignoreHtmlTags) return raw;
     const hasNewline = /\n$/.test(raw);
     const end = hasNewline ? '\n' : '';
     const body = raw.replace(/\r?\n$/, '');
     if (meta.type === 'blank') return end || body;
+    // Display text is always HTML-free. Whether HTML participates in comparison
+    // is controlled independently by comparisonText().
     return `${decodeEntities(stripTags(body))}${end}`;
   }
 
@@ -201,7 +206,7 @@
         allIndex: units.length,
         primaryIndex: -1,
         raw: rawLine,
-        text: visibleText(rawLine, meta, options),
+        text: visibleText(rawLine, meta),
         compareText: comparisonText(rawLine, meta, options),
         type: meta.type,
         subtype: meta.subtype,
@@ -356,6 +361,10 @@
   function makeRow(kind, beforeUnit, afterUnit, id, position) {
     const before = beforeUnit?.text || '';
     const after = afterUnit?.text || '';
+    const beforeRaw = beforeUnit?.raw || '';
+    const afterRaw = afterUnit?.raw || '';
+    const beforeTags = extractTags(beforeRaw);
+    const afterTags = extractTags(afterRaw);
     const beforeStart = beforeUnit?.rawStart ?? position.before;
     const afterStart = afterUnit?.rawStart ?? position.after;
     return {
@@ -363,8 +372,12 @@
       kind,
       before,
       after,
-      beforeRaw: beforeUnit?.raw || '',
-      afterRaw: afterUnit?.raw || '',
+      beforeRaw,
+      afterRaw,
+      beforeTags,
+      afterTags,
+      textChanged: before !== after,
+      htmlChanged: JSON.stringify(beforeTags) !== JSON.stringify(afterTags),
       beforeStart,
       beforeEnd: beforeUnit?.rawEnd ?? beforeStart,
       afterStart,
@@ -372,6 +385,8 @@
       beforeType: beforeUnit?.type || 'empty',
       afterType: afterUnit?.type || 'empty',
       severity: kind === 'same' ? 'minor' : classifySeverity(before, after),
+      // Inline highlighting is always based on visible text. Raw HTML is kept
+      // separately so tags can be reviewed without leaking into the body copy.
       parts: kind === 'same'
         ? [{ type: 'same', value: before, hunkId: null, beforeStart, afterStart }]
         : inlineDiff(before, after, id, beforeStart, afterStart)
@@ -412,7 +427,7 @@
         for (let count = 0; count < operation.values.length; count += 1) {
           const before = beforePrimary[beforeIndex++];
           const after = afterPrimary[afterIndex++];
-          pairs.push({ before, after, kind: before.text === after.text ? 'same' : 'replace' });
+          pairs.push({ before, after, kind: before.text === after.text && before.compareText === after.compareText ? 'same' : 'replace' });
         }
         operationIndex += 1;
         continue;
@@ -429,7 +444,7 @@
         operationIndex += 1;
       }
       for (const pair of alignHunk(removed, added, threshold)) {
-        if (pair.before && pair.after) pairs.push({ before: pair.before, after: pair.after, kind: pair.before.text === pair.after.text ? 'same' : 'replace' });
+        if (pair.before && pair.after) pairs.push({ before: pair.before, after: pair.after, kind: pair.before.text === pair.after.text && pair.before.compareText === pair.after.compareText ? 'same' : 'replace' });
         else if (pair.before) pairs.push({ before: pair.before, after: null, kind: 'delete' });
         else pairs.push({ before: null, after: pair.after, kind: 'insert' });
       }
