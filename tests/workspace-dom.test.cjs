@@ -122,8 +122,8 @@ async function workspace(mobile = false, saved = null) {
     input('#workingText', 'undo base plus');
     $('#workingText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'z',ctrlKey:true,bubbles:true}));
     assert.equal($('#workingText').value, 'undo base', 'Ctrl+Z works inside the working textarea');
-    $('#workingText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'z',ctrlKey:true,shiftKey:true,bubbles:true}));
-    assert.equal($('#workingText').value, 'undo base plus', 'Ctrl+Shift+Z redoes inside the working textarea');
+    $('#workingText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'y',ctrlKey:true,bubbles:true}));
+    assert.equal($('#workingText').value, 'undo base plus', 'Ctrl+Y redoes inside the working textarea');
 
     const polishMenu = $('.pane-polish');
     const searchMenu = $('.pane-search');
