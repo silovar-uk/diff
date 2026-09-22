@@ -1,4 +1,4 @@
-/* Text Review Studio v1 – lightweight full-clear action for starting a new review. */
+/* 差分比較 – full-clear action delegated to the app history transaction. */
 (() => {
   'use strict';
 
@@ -25,7 +25,12 @@
       return;
     }
 
-    if (!window.confirm('変更前・修正後の原稿をすべて削除しますか？')) return;
+    if (!window.confirm('変更前・修正後の原稿をすべて削除しますか？\n\nCtrl+Zで直前の状態に戻せます。')) return;
+
+    if (window.TextReviewApp?.clearAllDocuments?.()) {
+      window.requestAnimationFrame(() => before.focus({ preventScroll: true }));
+      return;
+    }
 
     before.value = '';
     dispatchInput(before);
