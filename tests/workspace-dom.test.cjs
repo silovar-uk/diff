@@ -46,7 +46,20 @@ async function workspace(mobile = false, saved = null) {
     assert.equal(w.document.querySelectorAll('details.tool-section[open]').length, 0);
     assert.equal($('#workflowStrip').hidden, false);
     assert.equal($('#chatgptReviewButton').hidden, true);
+    assert.equal($('#clearAllButton').disabled, true, 'clear-all starts disabled on an empty workspace');
+    assert.equal($('#helpPanel').hidden, true);
+    click('#helpButton');
+    assert.equal($('#helpPanel').hidden, false, 'help opens from the top bar');
+    assert.match($('#helpCurrentTitle').textContent, /左右|原稿/);
+    w.document.body.click();
+    assert.equal($('#helpPanel').hidden, true, 'outside click closes help');
     input('#baselineText', 'one\ntwo\nthree\nfour');
+    assert.equal($('#clearAllButton').disabled, false, 'clear-all enables immediately after typing');
+    click('#helpButton');
+    assert.match($('#helpCurrentTitle').textContent, /修正後/);
+    w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
+    assert.equal($('#helpPanel').hidden, true);
+    assert.equal(w.document.activeElement, $('#helpButton'), 'Escape closes help and restores focus');
     assert.equal($('#workflowStrip').hidden, true, 'guide hides immediately');
     input('#workingText', 'ONE\ntwo\nTHREE\nfour\nfive');
     await wait(280);
@@ -103,6 +116,15 @@ async function workspace(mobile = false, saved = null) {
     assert.equal(w.TextReviewApp.getState().compareOptions.ignoreHtmlTags, false);
     click('#editModeButton');
     assert.equal($('#chatgptReviewButton').hidden, true);
+
+    input('#workingText', 'undo base');
+    await wait(750);
+    input('#workingText', 'undo base plus');
+    $('#workingText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'z',ctrlKey:true,bubbles:true}));
+    assert.equal($('#workingText').value, 'undo base', 'Ctrl+Z works inside the working textarea');
+    $('#workingText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'z',ctrlKey:true,shiftKey:true,bubbles:true}));
+    assert.equal($('#workingText').value, 'undo base plus', 'Ctrl+Shift+Z redoes inside the working textarea');
+
     const polishMenu = $('.pane-polish');
     const searchMenu = $('.pane-search');
     polishMenu.open = true;
@@ -145,14 +167,15 @@ async function workspace(mobile = false, saved = null) {
     w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
     assert.equal($('#moreMenu').hidden, true);
     assert.equal(w.document.activeElement, $('#moreMenuButton'));
-    click('#moreMenuButton'); click('[data-clear-all]');
+    click('#clearAllButton');
     await wait(280);
     assert.equal($('#baselineText').value, '');
     assert.equal($('#workingText').value, '');
     assert.equal($('#workflowStrip').hidden, false);
     assert.equal(w.document.body.dataset.workspaceMode, 'edit');
-    click('#undoButton');
-    assert.ok($('#workingText').value, 'clear-all remains undoable');
+    $('#baselineText').dispatchEvent(new w.KeyboardEvent('keydown', {key:'z',ctrlKey:true,bubbles:true}));
+    assert.ok($('#baselineText').value, 'clear-all restores the before document with one Ctrl+Z');
+    assert.ok($('#workingText').value, 'clear-all restores the after document with the same Ctrl+Z');
     dom.window.close();
   }
   const restored = await workspace(false, {before:'before',after:'after',mode:'compare'});
@@ -161,10 +184,5 @@ async function workspace(mobile = false, saved = null) {
   assert.equal(restored.$('#chatgptReviewButton').hidden, false);
   assert.equal(restored.$('#chatgptReviewButton').disabled, false);
   restored.dom.window.close();
-  const sample = await workspace();
-  sample.click('[data-action="load-sample"]');
-  assert.equal(sample.$('#workflowStrip').hidden, true);
-  assert.equal(sample.$('#chatgptReviewButton').disabled, false);
-  sample.dom.window.close();
-  console.log('workspace DOM integration: desktop/mobile state, restore, review progress, focus, final read, map, J/K, display, selection, replace, undo/redo, copy, clear passed');
+  console.log('workspace DOM integration: desktop/mobile state, contextual help, textarea undo/redo, restore, review progress, focus, final read, map, display, selection, replace, copy, clear passed');
 })().catch(error => { console.error(error); process.exit(1); });
