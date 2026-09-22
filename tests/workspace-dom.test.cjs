@@ -38,7 +38,7 @@ async function workspace(mobile = false, saved = null) {
   for (const mobile of [false, true]) {
     const { dom, w, $, input, click, clipboard } = await workspace(mobile);
     assert.equal($('.quick-polish-section').tagName, 'SECTION');
-    assert.equal($('#otherEditTools').open, !mobile);
+    assert.equal($('#otherEditTools').open, false, 'editing tools stay progressive until requested');
     assert.equal(w.document.querySelectorAll('details.tool-section[open]').length, 0);
     assert.equal($('#workflowStrip').hidden, false);
     assert.equal($('#chatgptReviewButton').hidden, true);
@@ -54,6 +54,13 @@ async function workspace(mobile = false, saved = null) {
     assert.equal(Number($('#diffTotal').textContent), summary.changes);
     assert.equal($('#diffMap').children.length, summary.changes);
     assert.ok(summary.changes > 1);
+    assert.ok($('#reviewProgress').textContent.includes('/'), 'review progress is visible');
+    const firstReview = $('[data-review-index]');
+    assert.ok(firstReview, 'each changed row exposes a review control');
+    firstReview.click();
+    assert.equal(firstReview.getAttribute('aria-pressed'), 'true');
+    assert.ok($('#reviewProgress').textContent.includes('1'), 'review progress updates after confirming a change');
+    assert.ok($('#diffMap .is-reviewed'), 'reviewed state reaches the document map');
     const firstStatus = $('#diffNavStatus').textContent;
     w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', {key:'j',bubbles:true}));
     assert.notEqual($('#diffNavStatus').textContent, firstStatus);
@@ -66,6 +73,15 @@ async function workspace(mobile = false, saved = null) {
     assert.equal($('#workingText').value, beforeMapClick, 'map navigates without restoring text');
     assert.equal(mapButton.getAttribute('aria-current'), 'true');
     assert.equal(w.document.activeElement, mapButton, 'map focus survives navigation');
+    click('#reviewFocusButton');
+    assert.equal(w.document.body.classList.contains('review-focus'), true, 'focus review mode activates');
+    click('#reviewFocusButton');
+    assert.equal(w.document.body.classList.contains('review-focus'), false, 'focus review mode exits');
+    click('#finalPreviewButton');
+    assert.equal($('#finalPreviewDialog').open, true, 'final reading dialog opens');
+    assert.ok($('#finalPreviewText').textContent.includes('ONE'), 'final reading mode shows the working copy');
+    click('[data-action="close-final-preview"]');
+    assert.equal($('#finalPreviewDialog').open, false);
     click('[data-action="open-display"]');
     $('#ignoreHtmlTagsToggle').checked = false;
     click('[data-action="close-display"]');
@@ -128,5 +144,5 @@ async function workspace(mobile = false, saved = null) {
   assert.equal(sample.$('#workflowStrip').hidden, true);
   assert.equal(sample.$('#chatgptReviewButton').disabled, false);
   sample.dom.window.close();
-  console.log('workspace DOM integration: desktop/mobile state, restore, sample, compare, map, J/K, display, selection, replace, undo/redo, copy, clear passed');
+  console.log('workspace DOM integration: desktop/mobile state, restore, review progress, focus, final read, map, J/K, display, selection, replace, undo/redo, copy, clear passed');
 })().catch(error => { console.error(error); process.exit(1); });
