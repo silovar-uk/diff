@@ -14,7 +14,8 @@
     'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
     'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
     'displayWhitespace', 'displayUrls', 'searchInput', 'searchCount', 'toast',
-    'workflowStrip', 'diffSummary', 'diffMap', 'selectionToolbar', 'moreMenu', 'moreMenuButton'
+    'workflowStrip', 'diffSummary', 'diffMap', 'selectionToolbar', 'moreMenu', 'moreMenuButton',
+    'reviewProgress', 'reviewSidebarProgress', 'finalPreviewDialog', 'finalPreviewText', 'finalPreviewButton'
   ];
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -76,6 +77,9 @@
     displayOptions: { showTags: false, showWhitespace: false, highlightUrls: false },
     comparison: { rows: [], summary: emptySummary() },
     activeRowIndex: -1,
+    reviewedKeys: new Set(),
+    expandedSameRuns: new Set(),
+    reviewFocus: false,
     undoStack: [],
     redoStack: [],
     search: { query: '', matches: [], current: -1 },
@@ -181,6 +185,7 @@
         mode: state.mode,
         compareOptions: state.compareOptions,
         displayOptions: state.displayOptions,
+        reviewedKeys: [...state.reviewedKeys],
         updatedAt: new Date().toISOString()
       }));
     } catch (_) { /* The app remains usable without storage. */ }
@@ -197,6 +202,7 @@
       state.mode = data.mode === 'compare' ? 'compare' : 'edit';
       state.compareOptions = { ...state.compareOptions, ...(data.compareOptions || {}) };
       state.displayOptions = { ...state.displayOptions, ...(data.displayOptions || data.display || {}) };
+      state.reviewedKeys = new Set(Array.isArray(data.reviewedKeys) ? data.reviewedKeys : []);
     } catch (_) { /* Ignore malformed legacy data. */ }
   }
 
@@ -236,6 +242,8 @@
       rows,
       summary: result.summary || summaryFromRows(rows)
     };
+    reconcileReviewedKeys();
+    state.expandedSameRuns.clear();
     const changed = changedIndexes();
     if (!changed.includes(state.activeRowIndex)) state.activeRowIndex = changed[0] ?? -1;
   }
@@ -257,6 +265,56 @@
       if (row.kind !== 'same') indexes.push(index);
       return indexes;
     }, []);
+  }
+
+  function reviewKey(row) {
+    const source = `${row?.kind || ''}\u0000${row?.beforeRaw ?? row?.before ?? ''}\u0000${row?.afterRaw ?? row?.after ?? ''}`;
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `r${(hash >>> 0).toString(36)}`;
+  }
+
+  function reconcileReviewedKeys() {
+    const valid = new Set(
+      state.comparison.rows
+        .filter((row) => row.kind !== 'same')
+        .map(reviewKey)
+    );
+    state.reviewedKeys.forEach((key) => {
+      if (!valid.has(key)) state.reviewedKeys.delete(key);
+    });
+  }
+
+  function reviewedCount() {
+    return state.comparison.rows.reduce((count, row) =>
+      row.kind !== 'same' && state.reviewedKeys.has(reviewKey(row)) ? count + 1 : count, 0);
+  }
+
+  function unreviewedIndexes() {
+    return changedIndexes().filter((index) => !state.reviewedKeys.has(reviewKey(state.comparison.rows[index])));
+  }
+
+  function toggleReviewed(index) {
+    const row = state.comparison.rows[index];
+    if (!row || row.kind === 'same') return;
+    const key = reviewKey(row);
+    if (state.reviewedKeys.has(key)) state.reviewedKeys.delete(key);
+    else state.reviewedKeys.add(key);
+    renderAll();
+    persist();
+  }
+
+  function moveNextUnreviewed() {
+    const indexes = unreviewedIndexes();
+    if (!indexes.length) {
+      notify('すべての変更を確認済みです');
+      return;
+    }
+    const next = indexes.find((index) => index > state.activeRowIndex) ?? indexes[0];
+    selectDiff(next);
   }
 
   function marker(kind) {
