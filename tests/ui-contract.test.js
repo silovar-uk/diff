@@ -82,7 +82,11 @@ assert.ok(app.includes('row.afterRaw'), 'tag display must use raw row context fr
 
 assert.ok(engine.includes('function classifyRawLine('), 'the unified engine must own CMS classification');
 assert.ok(engine.includes('const STRUCTURAL_TAGS'), 'the unified engine must define structural HTML handling');
-assert.ok(engine.includes('beforeRaw:'), 'rows must retain raw source context for tag display');
+assert.ok(engine.includes('beforeRaw,'), 'rows must retain raw source context for tag display');
+assert.ok(engine.includes('afterRaw,'), 'rows must retain raw source context for tag display');
+assert.ok(engine.includes('textChanged: before !== after'), 'rows must distinguish visible-text changes');
+assert.ok(engine.includes('htmlChanged: JSON.stringify(beforeTags)'), 'rows must distinguish HTML-only changes');
+assert.ok(engine.includes('function visibleText(rawLine, meta)'), 'display text must be independent from HTML comparison mode');
 assert.ok(engine.includes('summary,'), 'the engine must return one shared summary');
 assert.ok(!engine.includes('ensureCompatibilityAnchors'), 'the engine must not create fake DOM anchors');
 assert.ok(!engine.includes('localStorage'), 'the comparison engine must stay independent from persistence');
