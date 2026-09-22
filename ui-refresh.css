@@ -799,3 +799,573 @@ body[data-workspace-state="empty"] .editor-tools-row {
     border-bottom:1px solid var(--line);
   }
 }
+
+
+/* Compact omnibar workspace v3 — 2026-09-22 */
+:root {
+  --topbar-height:44px;
+  --pane-head-height:40px;
+}
+
+/* One chrome bar. The document, not the app shell, owns the screen. */
+.app-bar {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:var(--topbar-height);
+  height:var(--topbar-height);
+  padding:5px 8px;
+  overflow:visible;
+  box-shadow:0 1px 10px rgba(14,25,44,.14);
+}
+.brand-compact {
+  flex:0 0 auto;
+  gap:6px;
+}
+.brand-compact img {
+  width:28px;
+  height:28px;
+  border-radius:7px;
+}
+.brand-compact .brand-text {
+  display:flex;
+  align-items:baseline;
+  gap:5px;
+  white-space:nowrap;
+}
+.brand-compact .brand-text strong {
+  font-size:12px;
+  letter-spacing:.03em;
+}
+.brand-compact .brand-text small {
+  margin:0;
+  color:#93a3bc;
+  font-size:8px;
+  letter-spacing:.04em;
+}
+.app-bar .mode-switch {
+  flex:0 0 auto;
+  padding:2px;
+  background:rgba(255,255,255,.10);
+}
+.app-bar .mode-switch button {
+  min-height:28px;
+  padding:4px 9px;
+  color:#b9c5d8;
+  font-size:10px;
+}
+.app-bar .mode-switch button.is-active {
+  color:#17376f;
+  background:#fff;
+}
+.app-bar-state {
+  min-width:0;
+  flex:1 1 auto;
+  overflow:hidden;
+}
+.app-bar .top-status {
+  display:block;
+  overflow:hidden;
+  padding:0 4px;
+  color:#c7d1df;
+  font-size:10px;
+  text-align:left;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.app-bar .toolbar-summary {
+  display:none;
+}
+.app-bar .top-actions {
+  flex:0 0 auto;
+  gap:4px;
+}
+.app-bar .icon-button,
+.app-bar .primary-button,
+.app-bar .quiet-button,
+.app-bar .tool-button {
+  min-height:28px;
+  height:28px;
+  border-radius:7px;
+  font-size:10px;
+}
+.app-bar .icon-button {
+  width:28px;
+}
+.app-bar .primary-button,
+.app-bar .quiet-button,
+.app-bar .tool-button {
+  padding:4px 8px;
+}
+
+/* Review controls morph into the same bar instead of creating a second toolbar. */
+.review-command {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  flex:0 0 auto;
+}
+.review-menu {
+  position:relative;
+}
+.review-menu > summary {
+  list-style:none;
+  cursor:pointer;
+}
+.review-menu > summary::-webkit-details-marker {
+  display:none;
+}
+.review-menu .review-progress {
+  min-height:28px;
+  height:28px;
+  padding:3px 8px;
+  color:#dbe4f2;
+  border-color:rgba(255,255,255,.16);
+  background:rgba(255,255,255,.07);
+}
+.review-menu .review-progress strong {
+  color:#fff;
+}
+.review-menu .review-progress.is-complete {
+  color:#c9f0df;
+  border-color:rgba(154,224,196,.35);
+  background:rgba(34,126,94,.22);
+}
+.review-popover {
+  position:absolute;
+  z-index:1800;
+  top:calc(100% + 8px);
+  left:0;
+  width:min(330px,calc(100vw - 24px));
+  padding:10px;
+  color:var(--ink);
+  border:1px solid #dce3ee;
+  border-radius:11px;
+  background:#fff;
+  box-shadow:0 18px 50px rgba(10,24,48,.24);
+}
+.review-popover .control-sidebar {
+  position:static;
+  max-height:none;
+  overflow:visible;
+  margin:0;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+}
+.review-popover .review-sidebar {
+  padding:5px 2px 8px;
+}
+.review-popover .diff-summary {
+  display:flex;
+  gap:12px;
+  padding:3px 2px 9px;
+  border-bottom:1px solid var(--line);
+}
+.review-popover .display-state-summary {
+  padding-top:7px;
+}
+.app-bar .diff-nav {
+  display:flex;
+  align-items:center;
+  gap:3px;
+  min-height:28px;
+  height:28px;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.app-bar .diff-nav .tool-button {
+  width:27px;
+  padding:0;
+  color:#dce4f0;
+  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+.app-bar .diff-nav-status {
+  min-width:46px;
+  color:#d1dae8;
+  font-size:9px;
+}
+#finalPreviewButton {
+  white-space:nowrap;
+}
+
+/* Full-width workspace: the old 220px review rail is now a popover. */
+.workspace {
+  padding:8px;
+}
+.workspace-layout,
+body[data-workspace-mode="edit"] .workspace-layout {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:0;
+  max-width:none;
+  margin:0;
+}
+.main-stage {
+  width:100%;
+  min-width:0;
+}
+.desk-toolbar,
+.editor-tools-row {
+  display:none !important;
+}
+
+/* Two 40px pane headers; everything else is document area. */
+.editor-view {
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  min-height:calc(100dvh - var(--topbar-height) - 16px);
+  height:calc(100dvh - var(--topbar-height) - 16px);
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:0 5px 18px rgba(28,45,76,.05);
+}
+.editor-pane {
+  position:relative;
+  display:grid;
+  grid-template-rows:var(--pane-head-height) minmax(0,1fr);
+  min-width:0;
+  min-height:0;
+}
+.editor-pane + .editor-pane {
+  border-left:1px solid var(--line);
+}
+.pane-head {
+  min-height:var(--pane-head-height);
+  height:var(--pane-head-height);
+  padding:5px 8px 5px 11px;
+  border-bottom:1px solid #e7ebf2;
+  background:#fbfcfe;
+}
+.editor-pane.is-working .pane-head {
+  background:#f7faff;
+}
+.pane-heading {
+  display:flex;
+  min-width:0;
+  align-items:baseline;
+  gap:7px;
+}
+.pane-heading strong {
+  color:#31445f;
+  font-size:11px;
+  white-space:nowrap;
+}
+.editor-pane.is-working .pane-heading strong {
+  color:#244f9d;
+}
+.pane-heading span {
+  overflow:hidden;
+  color:#8a96aa;
+  font-size:8px;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.pane-actions {
+  display:flex;
+  align-items:center;
+  gap:3px;
+}
+.pane-action,
+.pane-popover > summary {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:27px;
+  height:27px;
+  padding:3px 7px;
+  color:#5b6d89;
+  border:1px solid transparent;
+  border-radius:6px;
+  background:transparent;
+  font-size:9px;
+  font-weight:800;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.pane-action:hover,
+.pane-popover > summary:hover,
+.pane-popover[open] > summary {
+  color:#244d9e;
+  border-color:#d3def0;
+  background:#fff;
+}
+.pane-action.danger {
+  width:25px;
+  padding:0;
+  color:#a14a57 !important;
+}
+.working-pane-actions {
+  position:relative;
+}
+.working-body {
+  display:flex;
+  min-height:0;
+}
+.working-body .editor,
+.editor-pane > .editor {
+  flex:1;
+  min-height:0;
+}
+.editor {
+  padding:14px 16px;
+  font-size:14px;
+  line-height:1.9;
+}
+.pane-foot {
+  display:none !important;
+}
+
+/* Editing tools float over the editor; opening them never changes layout. */
+.pane-popover {
+  position:relative;
+}
+.pane-popover > summary {
+  list-style:none;
+}
+.pane-popover > summary::-webkit-details-marker {
+  display:none;
+}
+.pane-popover-panel {
+  position:absolute;
+  z-index:1200;
+  top:calc(100% + 7px);
+  right:0;
+  width:300px;
+  max-height:min(62dvh,520px);
+  overflow:auto;
+  padding:10px;
+  color:var(--ink);
+  border:1px solid #dce3ee;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 18px 46px rgba(18,34,61,.20);
+}
+.pane-search .pane-popover-panel {
+  width:330px;
+}
+.pane-popover-wide {
+  width:390px;
+}
+.pane-popover-panel .tool-section {
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.pane-popover-panel .tool-section + .tool-section {
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.popover-section-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:8px;
+}
+.popover-section-head strong {
+  color:#334965;
+  font-size:10px;
+}
+.popover-section-head small {
+  color:#8996aa;
+  font-size:8px;
+}
+.pane-popover-panel .tool-grid,
+.pane-popover-panel .tag-grid {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:5px;
+}
+.pane-popover-panel .tool-grid button,
+.pane-popover-panel .tag-grid button {
+  min-height:30px;
+  font-size:9px;
+}
+.pane-popover-panel .history-section > summary {
+  padding:8px 0;
+}
+
+/* Selection tools are a true overlay, not a grid row. */
+.selection-toolbar-floating {
+  position:absolute;
+  z-index:1100;
+  top:calc(var(--pane-head-height) + 8px);
+  right:10px;
+  width:max-content;
+  max-width:calc(100% - 20px);
+  padding:5px;
+  border:1px solid #d7e0ee;
+  border-radius:8px;
+  background:rgba(255,255,255,.98);
+  box-shadow:0 10px 28px rgba(20,38,68,.16);
+}
+.selection-toolbar-floating button {
+  min-height:27px;
+  padding:3px 7px;
+  font-size:9px;
+}
+
+/* Review also uses the available viewport, now that the second toolbar is gone. */
+.compare-view {
+  min-height:calc(100dvh - var(--topbar-height) - 16px);
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.diff-grid-scroll {
+  min-height:calc(100dvh - var(--topbar-height) - 18px);
+  max-height:calc(100dvh - var(--topbar-height) - 18px);
+}
+body[data-workspace-mode="compare"] .workspace-layout {
+  grid-template-columns:minmax(0,1fr);
+}
+body.review-focus .review-command .review-menu {
+  display:none;
+}
+
+/* Empty state can be expressive because it disappears as soon as work starts. */
+body[data-workspace-state="empty"] .workspace {
+  padding-top:8px;
+}
+body[data-workspace-state="empty"] .workflow-start {
+  min-height:92px;
+  margin-bottom:8px;
+  padding:14px 18px;
+}
+body[data-workspace-state="empty"] .editor-view {
+  height:calc(100dvh - var(--topbar-height) - 116px);
+  min-height:480px;
+}
+
+/* Mobile: one compact app bar row in edit; a second command row only during review. */
+@media (max-width:767px) {
+  :root {
+    --topbar-height:48px;
+    --pane-head-height:40px;
+  }
+  .app-bar {
+    display:grid;
+    grid-template-columns:auto auto minmax(0,1fr) auto;
+    gap:5px;
+    height:auto;
+    min-height:48px;
+    padding:5px 6px;
+  }
+  .brand-compact .brand-text {
+    display:none;
+  }
+  .brand-compact img {
+    width:27px;
+    height:27px;
+  }
+  .app-bar-state {
+    display:none;
+  }
+  .app-bar .mode-switch button {
+    padding:4px 7px;
+  }
+  .app-bar .top-actions {
+    justify-self:end;
+  }
+  .app-bar .top-actions #undoButton,
+  .app-bar .top-actions #redoButton {
+    display:none;
+  }
+  .review-command {
+    grid-column:1 / -1;
+    grid-row:2;
+    justify-content:center;
+    min-height:32px;
+  }
+  body[data-workspace-mode="compare"] {
+    --topbar-height:84px;
+  }
+  .workspace {
+    padding:6px;
+  }
+  .editor-view {
+    grid-template-columns:1fr;
+    height:auto;
+    min-height:0;
+    border-radius:8px;
+  }
+  .editor-pane {
+    min-height:calc(50dvh - 48px);
+  }
+  .editor-pane + .editor-pane {
+    border-left:0;
+    border-top:6px solid var(--canvas);
+  }
+  .pane-head {
+    padding-inline:8px;
+  }
+  .pane-heading span {
+    display:none;
+  }
+  .working-pane-actions {
+    gap:1px;
+  }
+  .pane-action,
+  .pane-popover > summary {
+    padding-inline:5px;
+    font-size:8px;
+  }
+  .pane-popover-panel,
+  .pane-search .pane-popover-panel,
+  .pane-popover-wide {
+    position:fixed;
+    z-index:1900;
+    top:54px;
+    left:8px;
+    right:8px;
+    width:auto;
+    max-height:70dvh;
+  }
+  .selection-toolbar-floating {
+    top:calc(var(--pane-head-height) + 6px);
+    right:7px;
+  }
+  .compare-view,
+  .diff-grid-scroll {
+    min-height:calc(100dvh - var(--topbar-height) - 12px);
+    max-height:none;
+  }
+  .review-popover {
+    position:fixed;
+    top:84px;
+    left:8px;
+    right:8px;
+    width:auto;
+  }
+  body[data-workspace-state="empty"] .workflow-start {
+    min-height:0;
+  }
+  body[data-workspace-state="empty"] .editor-view {
+    height:auto;
+    min-height:0;
+  }
+}
+
+@media (max-width:420px) {
+  .app-bar .top-actions .more-menu-wrap {
+    display:none;
+  }
+  .pane-polish > summary {
+    font-size:0;
+  }
+  .pane-polish > summary::after {
+    content:"整";
+    font-size:9px;
+  }
+  .pane-search > summary {
+    font-size:0;
+  }
+  .pane-search > summary::after {
+    content:"検索";
+    font-size:8px;
+  }
+}
