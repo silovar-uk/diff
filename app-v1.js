@@ -614,7 +614,7 @@
   }
 
   function closePaneMenus(except = null) {
-    $('[data-pane-menu]').forEach((details) => {
+    $$('[data-pane-menu]').forEach((details) => {
       if (details !== except) details.open = false;
     });
   }
@@ -963,7 +963,7 @@
     document.addEventListener('focusin', updateSelectionToolbar);
     $('#workingText').addEventListener('select', updateSelectionToolbar);
     $('#workingText').addEventListener('input', updateSelectionToolbar);
-    $('[data-pane-menu]').forEach((details) => {
+    $$('[data-pane-menu]').forEach((details) => {
       details.addEventListener('toggle', () => {
         if (details.open) closePaneMenus(details);
       });
