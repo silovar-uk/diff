@@ -11,14 +11,14 @@
   <link rel="stylesheet" href="app-v1.css" />
   <link rel="stylesheet" href="replace-tools-v1.css" />
   <link rel="stylesheet" href="ui-refresh.css" />
-  <title>Text Review Studio v1</title>
+  <title>差分比較</title>
 </head>
 <body data-workspace-mode="edit" data-workspace-state="empty">
   <div class="app-shell">
     <header class="topbar app-bar">
-      <a class="brand brand-compact" href="#" aria-label="Text Review Studio">
+      <a class="brand brand-compact" href="#" aria-label="差分比較">
         <img src="assets/app-icon.png" alt="" />
-        <span class="brand-text"><strong>TRS</strong><small>Text Review Studio</small></span>
+        <span class="brand-text"><strong class="brand-label">差分比較</strong></span>
       </a>
 
       <div class="mode-switch" role="group" aria-label="表示モード">
@@ -65,14 +65,42 @@
       </div>
 
       <div class="top-actions">
-        <button id="undoButton" class="icon-button" type="button" data-action="undo" title="元に戻す" aria-label="元に戻す" disabled>↶</button>
-        <button id="redoButton" class="icon-button" type="button" data-action="redo" title="やり直す" aria-label="やり直す" disabled>↷</button>
+        <div class="help-wrap">
+          <button id="helpButton" class="icon-button help-button" type="button" data-action="toggle-help" aria-label="使い方" aria-expanded="false" aria-controls="helpPanel" title="使い方">?</button>
+          <div id="helpPanel" class="help-panel" role="dialog" aria-label="使い方" hidden>
+            <section class="help-current">
+              <small>いまやること</small>
+              <strong id="helpCurrentTitle">まず左右に原稿を入れます</strong>
+              <p id="helpCurrentText">左に変更前、右に修正後を貼り付けてください。</p>
+            </section>
+            <section class="help-section">
+              <strong>基本の使い方</strong>
+              <ol>
+                <li>左に変更前を貼る</li>
+                <li>右に修正後を貼る</li>
+                <li>「レビュー」で変更を見る</li>
+                <li>確認したら出力する</li>
+              </ol>
+            </section>
+            <section class="help-section help-shortcuts">
+              <strong>ショートカット</strong>
+              <dl>
+                <div><dt><kbd>Ctrl / Cmd</kbd> + <kbd>Z</kbd></dt><dd>元に戻す</dd></div>
+                <div><dt><kbd>Ctrl / Cmd</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></dt><dd>やり直す</dd></div>
+                <div><dt><kbd>J</kbd> / <kbd>K</kbd></dt><dd>次 / 前の変更</dd></div>
+                <div><dt><kbd>V</kbd></dt><dd>確認済みにする</dd></div>
+              </dl>
+            </section>
+          </div>
+        </div>
+        <button id="undoButton" class="icon-button" type="button" data-action="undo" title="元に戻す Ctrl+Z" aria-label="元に戻す" aria-keyshortcuts="Control+Z Meta+Z" disabled>↶</button>
+        <button id="redoButton" class="icon-button" type="button" data-action="redo" title="やり直す Ctrl+Shift+Z" aria-label="やり直す" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled>↷</button>
+        <button id="clearAllButton" class="clear-all-button" type="button" data-clear-all aria-label="原稿をすべて削除" disabled><span class="clear-all-long">原稿をすべて削除</span><span class="clear-all-short">すべて削除</span></button>
         <div class="more-menu-wrap">
           <button id="moreMenuButton" class="icon-button" type="button" aria-label="その他" title="その他" aria-expanded="false" aria-controls="moreMenu">⋯</button>
           <div id="moreMenu" class="more-menu" hidden>
             <button type="button" data-action="open-display">表示設定</button>
             <button id="chatgptReviewButton" type="button" title="元原稿・変更版・差分一覧をChatGPTに渡して変更意図を分析" hidden disabled>GPTで意図分析</button>
-            <button type="button" data-clear-all class="danger-menu-item">原稿をすべて削除</button>
           </div>
         </div>
         <div class="copy-wrap">
@@ -90,16 +118,8 @@
 
     <main class="workspace">
           <section id="workflowStrip" class="workflow-strip workflow-start" aria-label="原稿を入れて比較を開始">
-            <div class="workflow-start-copy">
-              <small>TEXT REVIEW STUDIO</small>
-              <strong>原稿を入れて、変更だけ確認する</strong>
-              <p>変更前と修正後を貼り付けると、レビューすべき箇所だけ追えます。</p>
-            </div>
-            <div class="workflow-start-actions">
-              <button class="start-paste" type="button" data-action="paste-before"><span>1</span><strong>変更前を貼り付け</strong></button>
-              <button class="start-paste is-after" type="button" data-action="paste-after"><span>2</span><strong>修正後を貼り付け</strong></button>
-              <button class="sample-side" type="button" data-action="load-sample">サンプルで試す</button>
-            </div>
+            <strong>変更前と修正後を左右に貼り付けてください</strong>
+            <span>Ctrl+V / Cmd+Vでそのまま貼り付けられます</span>
           </section>
       <div class="workspace-layout">
         <section class="main-stage">
@@ -112,11 +132,10 @@
                   <span id="baselineStats">0文字・0行</span>
                 </div>
                 <div class="pane-actions">
-                  <button class="pane-action" type="button" data-action="paste-before">貼り付け</button>
-                  <button class="pane-action danger" type="button" data-action="clear-before" aria-label="変更前を消去">×</button>
+                  <button class="pane-action danger" type="button" data-action="clear-before" aria-label="変更前の原稿を消去">消去</button>
                 </div>
               </header>
-              <textarea id="baselineText" aria-label="変更前" class="editor" spellcheck="false" placeholder="変更前の原稿を貼り付け"></textarea>
+              <textarea id="baselineText" aria-label="変更前" class="editor" spellcheck="false" placeholder="変更前の原稿をここに貼り付け"></textarea>
             </article>
 
             <article class="editor-pane is-working">
@@ -200,8 +219,7 @@
                     </div>
                   </details>
 
-                  <button class="pane-action" type="button" data-action="paste-after">貼り付け</button>
-                  <button class="pane-action danger" type="button" data-action="clear-after" aria-label="修正後を消去">×</button>
+                  <button class="pane-action danger" type="button" data-action="clear-after" aria-label="修正後の原稿を消去">消去</button>
                 </div>
               </header>
 
@@ -215,7 +233,7 @@
               </div>
 
               <div class="working-body">
-                <textarea id="workingText" aria-label="修正後" class="editor" spellcheck="false" placeholder="修正後の原稿を貼り付け、またはここで編集"></textarea>
+                <textarea id="workingText" aria-label="修正後" class="editor" spellcheck="false" placeholder="修正後の原稿をここに貼り付け"></textarea>
               </div>
             </article>
           </section>
