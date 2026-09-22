@@ -562,8 +562,10 @@
         : `<span><strong>✓ ${reviewed}</strong> / ${total} 確認完了</span>`;
 
     const preview = $('#finalPreviewButton');
-    preview.disabled = !state.after;
-    preview.classList.toggle('is-ready', Boolean(total) && remaining === 0);
+    const previewReady = state.mode === 'compare' && Boolean(state.after) && total > 0 && remaining === 0;
+    preview.hidden = !previewReady;
+    preview.disabled = !previewReady;
+    preview.classList.toggle('is-ready', previewReady);
     $('#reviewFocusButton').disabled = !total;
 
     const warning = $('#copyReviewWarning');
@@ -609,6 +611,17 @@
     $('#moreMenu').hidden = true;
     $('#moreMenuButton').setAttribute('aria-expanded', 'false');
     if (restoreFocus) $('#moreMenuButton').focus();
+  }
+
+  function closePaneMenus(except = null) {
+    $('[data-pane-menu]').forEach((details) => {
+      if (details !== except) details.open = false;
+    });
+  }
+
+  function closeReviewMenu() {
+    const menu = $('.review-menu');
+    if (menu) menu.open = false;
   }
 
   function renderMode() {
@@ -942,7 +955,7 @@
     const mobile = window.matchMedia('(max-width: 767px)');
     $('#otherEditTools').open = false;
     const syncOtherTools = () => {
-      if (mobile.matches) $('#otherEditTools').open = false;
+      if (mobile.matches) closePaneMenus();
     };
     syncOtherTools();
     mobile.addEventListener('change', syncOtherTools);
@@ -950,6 +963,11 @@
     document.addEventListener('focusin', updateSelectionToolbar);
     $('#workingText').addEventListener('select', updateSelectionToolbar);
     $('#workingText').addEventListener('input', updateSelectionToolbar);
+    $('[data-pane-menu]').forEach((details) => {
+      details.addEventListener('toggle', () => {
+        if (details.open) closePaneMenus(details);
+      });
+    });
     $('#moreMenuButton').addEventListener('click', () => {
       const opening = $('#moreMenu').hidden;
       $('#moreMenu').hidden = !opening;
@@ -962,6 +980,8 @@
     // Capture runs before clear-all's own handler; closing does not cancel its action.
     document.addEventListener('click', event => {
       if (!event.target.closest('.more-menu-wrap') || event.target.closest('[data-clear-all]')) closeMoreMenu();
+      if (!event.target.closest('[data-pane-menu]')) closePaneMenus();
+      if (!event.target.closest('.review-menu')) closeReviewMenu();
     }, true);
 
     $('#baselineText').addEventListener('input', (event) => {
@@ -1063,6 +1083,8 @@
       if (event.key === 'Escape') {
         closeCopyMenu();
         if (!$('#moreMenu').hidden) closeMoreMenu(true);
+        closePaneMenus();
+        closeReviewMenu();
         if ($('#displayDialog').open) $('#displayDialog').close();
         if ($('#finalPreviewDialog').open) closeFinalPreview();
       }
