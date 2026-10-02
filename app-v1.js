@@ -11,12 +11,13 @@
   const LEGACY_KEYS = ['text-review-studio-v0.6.3', 'text-review-studio-v0.6.2', 'text-review-studio-v0.6.1', 'text-review-studio-v0.6.0'];
   const REQUIRED_IDS = [
     'baselineText', 'workingText', 'editModeButton', 'compareModeButton',
-    'ignoreHtmlTagsToggle', 'editorView', 'compareView', 'diffRows',
+    'ignoreHtmlTagsToggle', 'ignoreWhitespaceNoiseToggle', 'editorView', 'compareView', 'diffRows',
     'copyButton', 'copyMenu', 'displayDialog', 'displayShowTags',
     'displayWhitespace', 'displayUrls', 'searchInput', 'searchCount', 'toast',
     'workflowStrip', 'diffSummary', 'diffMap', 'selectionToolbar', 'moreMenu', 'moreMenuButton',
     'reviewProgress', 'reviewSidebarProgress', 'finalPreviewDialog', 'finalPreviewText', 'finalPreviewButton',
-    'helpButton', 'helpPanel', 'helpCurrentTitle', 'helpCurrentText', 'clearAllButton'
+    'helpButton', 'helpPanel', 'helpCurrentTitle', 'helpCurrentText', 'clearAllButton',
+    'cleanupTarget', 'cleanupNoiseSummary', 'pasteNoiseBanner', 'pasteNoiseTitle', 'pasteNoiseDetail'
   ];
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -74,7 +75,7 @@
     before: '',
     after: '',
     mode: 'edit',
-    compareOptions: { ignoreHtmlTags: true },
+    compareOptions: { ignoreHtmlTags: true, ignoreWhitespaceNoise: false },
     displayOptions: { showTags: false, showWhitespace: false, highlightUrls: false },
     comparison: { rows: [], summary: emptySummary() },
     activeRowIndex: -1,
@@ -237,6 +238,7 @@
     }
     const result = Diff.diffRows(state.before, state.after, {
       ignoreHtmlTags: state.compareOptions.ignoreHtmlTags,
+      ignoreWhitespaceNoise: state.compareOptions.ignoreWhitespaceNoise,
       ignoreSoftFormatting: false
     });
     const rows = Array.isArray(result.rows) ? result.rows : [];
@@ -328,6 +330,8 @@
     let output = escapeHTML(text);
     if (!state.displayOptions.showWhitespace) return output;
     return output
+      .replace(/\t/g, '<span class="visible-space">⇥</span>')
+      .replace(/[\u00A0\u2000-\u200A\u202F\u205F]/g, '<span class="visible-space">◇</span>')
       .replace(/　/g, '<span class="visible-space">□</span>')
       .replace(/ /g, '<span class="visible-space">·</span>')
       .replace(/\n/g, '<span class="visible-newline">↵</span>\n');
@@ -690,12 +694,14 @@
     const target = $('#displayStateSummary');
     if (!target) return;
     const compareLabel = state.compareOptions.ignoreHtmlTags ? '本文のみ' : 'HTMLも比較';
+    const whitespaceLabel = state.compareOptions.ignoreWhitespaceNoise ? '空白ノイズ無視' : '空白差も確認';
     const tagLabel = state.displayOptions.showTags ? 'タグ表示' : 'タグ非表示';
-    target.innerHTML = `<button type="button" data-action="open-display" title="比較と表示の設定を変更"><span>${escapeHTML(compareLabel)}</span><span>${escapeHTML(tagLabel)}</span></button>`;
+    target.innerHTML = `<button type="button" data-action="open-display" title="比較と表示の設定を変更"><span>${escapeHTML(compareLabel)}</span><span>${escapeHTML(whitespaceLabel)}</span><span>${escapeHTML(tagLabel)}</span></button>`;
   }
 
   function syncDisplayControls() {
     $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
+    $('#ignoreWhitespaceNoiseToggle').checked = state.compareOptions.ignoreWhitespaceNoise;
     $('#displayShowTags').checked = state.displayOptions.showTags;
     $('#displayWhitespace').checked = state.displayOptions.showWhitespace;
     $('#displayUrls').checked = state.displayOptions.highlightUrls;
@@ -705,6 +711,7 @@
     renderMode();
     updateStatus();
     renderStats();
+    renderCleanupStatus();
     renderUndo();
     renderSearch();
     renderReviewProgress();
@@ -857,6 +864,87 @@
     return tokens.reduce((output, token, index) => output.replaceAll(`\uE000TRS${index}\uE001`, token), changed);
   }
 
+  const PASTE_SPACE_RE = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+  const PASTE_EDGE_RE = /^[ \t\u00A0\u2000-\u200A\u202F\u205F\u3000]+|[ \t\u00A0\u2000-\u200A\u202F\u205F\u3000]+$/;
+
+  function analyzePasteNoise(value) {
+    const text = String(value || '').replace(/\r\n?/g, '\n');
+    const lines = text.split('\n');
+    const report = {
+      tabs: (text.match(/\t/g) || []).length,
+      specialSpaces: (text.match(PASTE_SPACE_RE) || []).length,
+      repeatedSpaces: (text.match(/ {2,}/g) || []).length,
+      edgeSpaces: lines.filter((line) => PASTE_EDGE_RE.test(line)).length,
+      blankRuns: (text.match(/\n{3,}/g) || []).length
+    };
+    report.total = report.tabs + report.specialSpaces + report.repeatedSpaces + report.edgeSpaces + report.blankRuns;
+    return report;
+  }
+
+  function cleanupPastedText(value) {
+    const normalized = String(value || '').replace(/\r\n?/g, '\n');
+    return protectedTransform(normalized, (text) => text
+      .replace(PASTE_SPACE_RE, ' ')
+      .replace(/\t+/g, ' ')
+      .split('\n')
+      .map((line) => line.replace(/ {2,}/g, ' ').trim())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n'));
+  }
+
+  function noiseDetail(report) {
+    const parts = [];
+    if (report.tabs) parts.push(`Tab ${report.tabs}`);
+    if (report.repeatedSpaces) parts.push(`連続空白 ${report.repeatedSpaces}`);
+    if (report.specialSpaces) parts.push(`特殊空白 ${report.specialSpaces}`);
+    if (report.edgeSpaces) parts.push(`行端 ${report.edgeSpaces}`);
+    if (report.blankRuns) parts.push(`余分な空行 ${report.blankRuns}`);
+    return parts.join(' / ');
+  }
+
+  function renderCleanupStatus() {
+    const before = analyzePasteNoise(state.before);
+    const after = analyzePasteNoise(state.after);
+    const total = before.total + after.total;
+    const aggregate = {
+      tabs: before.tabs + after.tabs,
+      specialSpaces: before.specialSpaces + after.specialSpaces,
+      repeatedSpaces: before.repeatedSpaces + after.repeatedSpaces,
+      edgeSpaces: before.edgeSpaces + after.edgeSpaces,
+      blankRuns: before.blankRuns + after.blankRuns
+    };
+    aggregate.total = total;
+    const summary = $('#cleanupNoiseSummary');
+    if (summary) {
+      summary.textContent = total ? `左右で ${total}件候補 · ${noiseDetail(aggregate)}` : '貼り付けノイズは見つかりません';
+      summary.classList.toggle('has-noise', Boolean(total));
+    }
+    const banner = $('#pasteNoiseBanner');
+    if (!banner) return;
+    banner.hidden = !total || state.mode !== 'edit';
+    if (total) {
+      $('#pasteNoiseTitle').textContent = `貼り付けノイズ ${total}件`;
+      $('#pasteNoiseDetail').textContent = noiseDetail(aggregate);
+    }
+  }
+
+  function runPasteCleanup(target = $('#cleanupTarget')?.value || 'both') {
+    const sides = target === 'before' ? ['before'] : target === 'after' ? ['after'] : ['before', 'after'];
+    const next = {};
+    let candidates = 0;
+    sides.forEach((side) => {
+      candidates += analyzePasteNoise(state[side]).total;
+      next[side] = cleanupPastedText(state[side]);
+    });
+    const changed = sides.filter((side) => next[side] !== state[side]);
+    if (!changed.length) {
+      notify('整理する貼り付けノイズはありません');
+      return;
+    }
+    const label = target === 'before' ? '変更前' : target === 'after' ? '修正後' : '左右';
+    commit(() => changed.forEach((side) => { state[side] = next[side]; }), `${label}の貼り付けノイズを${candidates}件整理しました`);
+  }
+
   function runTransform(kind) {
     let next = state.after;
     let label = '';
@@ -937,6 +1025,7 @@
 
   function openDisplayDialog() {
     $('#ignoreHtmlTagsToggle').checked = state.compareOptions.ignoreHtmlTags;
+    $('#ignoreWhitespaceNoiseToggle').checked = state.compareOptions.ignoreWhitespaceNoise;
     $('#displayShowTags').checked = state.displayOptions.showTags;
     $('#displayWhitespace').checked = state.displayOptions.showWhitespace;
     $('#displayUrls').checked = state.displayOptions.highlightUrls;
@@ -945,6 +1034,7 @@
 
   function applyDisplay() {
     state.compareOptions.ignoreHtmlTags = $('#ignoreHtmlTagsToggle').checked;
+    state.compareOptions.ignoreWhitespaceNoise = $('#ignoreWhitespaceNoiseToggle').checked;
     state.displayOptions = {
       showTags: $('#displayShowTags').checked,
       showWhitespace: $('#displayWhitespace').checked,
@@ -1076,6 +1166,7 @@
       state.before = event.target.value;
       scheduleComparison();
       renderStats();
+      renderCleanupStatus();
       renderUndo();
       updateStatus();
       if (!$('#helpPanel').hidden) renderHelp();
@@ -1085,6 +1176,7 @@
       state.after = event.target.value;
       scheduleComparison();
       renderStats();
+      renderCleanupStatus();
       renderUndo();
       updateStatus();
       computeSearch();
@@ -1131,6 +1223,8 @@
         'load-sample': loadSample,
         'clear-before': () => clearSide('before'),
         'clear-after': () => clearSide('after'),
+        'cleanup-paste': () => runPasteCleanup(),
+        'cleanup-paste-both': () => runPasteCleanup('both'),
         'transform-space': () => runTransform('space'),
         'transform-symbol': () => runTransform('symbol'),
         'transform-notation': () => runTransform('notation'),
