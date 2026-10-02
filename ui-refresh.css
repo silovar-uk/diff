@@ -1586,3 +1586,60 @@ body[data-workspace-state="empty"] .editor-view {
     font-size:9px;
   }
 }
+
+
+/* paste-cleanup-v1 */
+.paste-noise-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: -2px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9e4f8;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #f7faff, #fbfcff);
+}
+.paste-noise-banner[hidden] { display: none; }
+.paste-noise-copy { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.paste-noise-copy strong { color: #314d82; font-size: 12px; }
+.paste-noise-copy span { overflow: hidden; color: #6f7f9d; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.paste-noise-banner button,
+.cleanup-primary {
+  flex: 0 0 auto;
+  border: 1px solid #b9cbea;
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #31558f;
+  font-size: 11px;
+  font-weight: 800;
+  background: #fff;
+}
+.paste-noise-banner button:hover,
+.cleanup-primary:hover { border-color: #89a8dd; background: #f2f6ff; }
+.cleanup-command { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: end; }
+.cleanup-command label { display: grid; gap: 3px; color: #7d8aa3; font-size: 9px; font-weight: 800; }
+.cleanup-command select {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid #dbe3ef;
+  border-radius: 7px;
+  padding: 4px 26px 4px 7px;
+  color: #35445f;
+  font-size: 11px;
+  background: #fff;
+}
+.cleanup-noise-summary { margin: 0; color: #8a94a8; font-size: 10px; line-height: 1.45; }
+.cleanup-noise-summary.has-noise { color: #5570a0; }
+.cleanup-details { border-top: 1px solid #edf0f5; padding-top: 7px; }
+.cleanup-details > summary { cursor: pointer; color: #6f7d96; font-size: 10px; font-weight: 800; list-style: none; }
+.cleanup-details > summary::-webkit-details-marker { display: none; }
+.cleanup-details > summary::after { content: "＋"; float: right; color: #96a2b7; }
+.cleanup-details[open] > summary::after { content: "−"; }
+.cleanup-details .tool-grid { margin-top: 7px; }
+@media (max-width: 620px) {
+  .paste-noise-banner { align-items: stretch; flex-direction: column; gap: 8px; }
+  .paste-noise-copy { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .paste-noise-copy span { white-space: normal; }
+  .paste-noise-banner button { width: 100%; }
+}
