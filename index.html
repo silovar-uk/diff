@@ -121,6 +121,13 @@
             <strong>変更前と修正後を左右に貼り付けてください</strong>
             <span>Ctrl+V / Cmd+Vでそのまま貼り付けられます</span>
           </section>
+          <section id="pasteNoiseBanner" class="paste-noise-banner" hidden aria-live="polite">
+            <div class="paste-noise-copy">
+              <strong id="pasteNoiseTitle">貼り付けノイズを検出</strong>
+              <span id="pasteNoiseDetail"></span>
+            </div>
+            <button type="button" data-action="cleanup-paste-both">左右を整える</button>
+          </section>
       <div class="workspace-layout">
         <section class="main-stage">
 
@@ -149,14 +156,28 @@
                     <summary>整形</summary>
                     <div class="pane-popover-panel">
                       <section class="tool-section quick-polish-section" aria-labelledby="quickPolishTitle">
-                        <header class="popover-section-head"><strong id="quickPolishTitle">整形</strong><small>修正後のみ</small></header>
-                        <div class="tool-grid">
-                          <button type="button" data-action="transform-space">空白を整理</button>
-                          <button type="button" data-replace-action="fullwidth-to-halfwidth">全角を半角へ</button>
-                          <button type="button" data-action="transform-symbol">記号を統一</button>
-                          <button type="button" data-action="transform-notation">表記を統一</button>
-                          <button type="button" data-action="transform-newline">空行を整理</button>
+                        <header class="popover-section-head"><strong id="quickPolishTitle">貼り付けを整える</strong><small>PDF / Word / Web</small></header>
+                        <div class="cleanup-command">
+                          <label for="cleanupTarget"><span>対象</span>
+                            <select id="cleanupTarget">
+                              <option value="both">左右とも</option>
+                              <option value="before">変更前のみ</option>
+                              <option value="after">修正後のみ</option>
+                            </select>
+                          </label>
+                          <button class="cleanup-primary" type="button" data-action="cleanup-paste">ノイズを整理</button>
                         </div>
+                        <p id="cleanupNoiseSummary" class="cleanup-noise-summary">貼り付けノイズを確認中</p>
+                        <details class="cleanup-details">
+                          <summary>個別の整形</summary>
+                          <div class="tool-grid">
+                            <button type="button" data-action="transform-space">空白を整理</button>
+                            <button type="button" data-replace-action="fullwidth-to-halfwidth">全角を半角へ</button>
+                            <button type="button" data-action="transform-symbol">記号を統一</button>
+                            <button type="button" data-action="transform-notation">表記を統一</button>
+                            <button type="button" data-action="transform-newline">空行を整理</button>
+                          </div>
+                        </details>
                       </section>
                     </div>
                   </details>
@@ -265,6 +286,10 @@
           <label class="display-option">
             <input id="ignoreHtmlTagsToggle" type="checkbox" checked />
             <span><strong>本文のみで比較</strong><small>ONではHTMLタグの違いを除外。OFFではタグ・属性の変更も差分として扱います。</small></span>
+          </label>
+          <label class="display-option">
+            <input id="ignoreWhitespaceNoiseToggle" type="checkbox" />
+            <span><strong>空白ノイズを無視</strong><small>Tab・連続空白・行頭/行末空白・空行だけの増減を差分から外します。原稿そのものは変更しません。</small></span>
           </label>
         </section>
         <section class="display-options-section">
