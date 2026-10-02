@@ -21,6 +21,7 @@
         ? options.ignoreHtmlTags
         : typeof document !== 'undefined',
       ignoreSoftFormatting: Boolean(options.ignoreSoftFormatting),
+      ignoreWhitespaceNoise: Boolean(options.ignoreWhitespaceNoise),
       lineMatchThreshold: Number.isFinite(options.lineMatchThreshold)
         ? Math.min(1, Math.max(0, options.lineMatchThreshold))
         : DEFAULT_THRESHOLD
@@ -128,7 +129,10 @@
   }
 
   function normalizeSpaces(value) {
-    return String(value || '').replace(/\u00a0/g, ' ').replace(/[ \t　]+/g, ' ').trim();
+    return String(value || '')
+      .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
   }
 
   function tagNames(value) {
@@ -211,7 +215,7 @@
         type: meta.type,
         subtype: meta.subtype,
         structural: meta.structural,
-        omitted: options.ignoreHtmlTags && meta.structural,
+        omitted: (options.ignoreHtmlTags && meta.structural) || (options.ignoreWhitespaceNoise && meta.type === 'blank'),
         rawStart: start,
         rawEnd: end
       };
@@ -415,7 +419,12 @@
     return rows;
   }
 
-  function buildPrimaryPairs(beforePrimary, afterPrimary, threshold) {
+  function pairedKind(before, after, options) {
+    if (options.ignoreWhitespaceNoise) return before.compareText === after.compareText ? 'same' : 'replace';
+    return before.text === after.text && before.compareText === after.compareText ? 'same' : 'replace';
+  }
+
+  function buildPrimaryPairs(beforePrimary, afterPrimary, threshold, options) {
     const operations = lcsDiff(beforePrimary.map((unit) => unit.compareText), afterPrimary.map((unit) => unit.compareText), MAX_LINE_CELLS);
     const pairs = [];
     let beforeIndex = 0;
@@ -427,7 +436,7 @@
         for (let count = 0; count < operation.values.length; count += 1) {
           const before = beforePrimary[beforeIndex++];
           const after = afterPrimary[afterIndex++];
-          pairs.push({ before, after, kind: before.text === after.text && before.compareText === after.compareText ? 'same' : 'replace' });
+          pairs.push({ before, after, kind: pairedKind(before, after, options) });
         }
         operationIndex += 1;
         continue;
@@ -444,7 +453,7 @@
         operationIndex += 1;
       }
       for (const pair of alignHunk(removed, added, threshold)) {
-        if (pair.before && pair.after) pairs.push({ before: pair.before, after: pair.after, kind: pair.before.text === pair.after.text && pair.before.compareText === pair.after.compareText ? 'same' : 'replace' });
+        if (pair.before && pair.after) pairs.push({ before: pair.before, after: pair.after, kind: pairedKind(pair.before, pair.after, options) });
         else if (pair.before) pairs.push({ before: pair.before, after: null, kind: 'delete' });
         else pairs.push({ before: null, after: pair.after, kind: 'insert' });
       }
@@ -456,7 +465,7 @@
     const options = resolveOptions(inputOptions);
     const beforeDoc = buildUnits(beforeText, options, 'before');
     const afterDoc = buildUnits(afterText, options, 'after');
-    const primaryPairs = buildPrimaryPairs(beforeDoc.primary, afterDoc.primary, options.lineMatchThreshold);
+    const primaryPairs = buildPrimaryPairs(beforeDoc.primary, afterDoc.primary, options.lineMatchThreshold, options);
     const rows = [];
     const hunks = [];
     let sameCount = 0;
@@ -509,7 +518,8 @@
       after: afterDoc.units.filter((unit) => !unit.omitted).map((unit) => unit.text).join(''),
       summary,
       ignoredTags: options.ignoreHtmlTags,
-      ignoredSoftFormatting: options.ignoreSoftFormatting
+      ignoredSoftFormatting: options.ignoreSoftFormatting,
+      ignoredWhitespaceNoise: options.ignoreWhitespaceNoise
     };
   }
 
